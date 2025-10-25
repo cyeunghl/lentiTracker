@@ -1,0 +1,62 @@
+:root {
+    --brand-primary: #4f46e5;
+    --brand-primary-dark: #4338ca;
+}
+
+body {
+    background-color: #f5f7fb;
+}
+
+.bg-primary {
+    background-color: var(--brand-primary) !important;
+}
+
+.btn-primary {
+    background-color: var(--brand-primary) !important;
+    border-color: var(--brand-primary) !important;
+}
+
+.btn-primary:hover {
+    background-color: var(--brand-primary-dark) !important;
+    border-color: var(--brand-primary-dark) !important;
+}
+
+.badge.text-bg-primary,
+.text-bg-primary {
+    background-color: var(--brand-primary) !important;
+}
+
+.navbar-dark .navbar-brand,
+.navbar-dark .navbar-nav .nav-link {
+    color: #f8f9ff !important;
+}
+
+.card {
+    border: none;
+}
+
+.table tbody tr {
+    cursor: pointer;
+}
+
+#labelPreview {
+    min-height: 140px;
+    background: repeating-linear-gradient(
+        -45deg,
+        #f8f9fa,
+        #f8f9fa 10px,
+        #ffffff 10px,
+        #ffffff 20px
+    );
+}
+
+#labelPreview .label-item {
+    border: 1px dashed #6c757d;
+    padding: 12px;
+    margin-bottom: 8px;
+    background-color: rgba(255,255,255,0.9);
+}
+
+.badge-sample {
+    font-size: 0.75rem;
+}
