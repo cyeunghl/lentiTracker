@@ -252,6 +252,35 @@ class TiterSample(db.Model, TimestampMixin):
         }
 
 
+SHORTHAND_MULTIPLIERS = {
+    'K': 1_000,
+    'M': 1_000_000,
+    'B': 1_000_000_000,
+}
+
+
+def parse_shorthand_number(value):
+    """Convert values like 750K or 1.5M to floats."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace(',', '')
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    if text:
+        suffix = text[-1].upper()
+        if suffix in SHORTHAND_MULTIPLIERS:
+            try:
+                base = float(text[:-1])
+                return base * SHORTHAND_MULTIPLIERS[suffix]
+            except ValueError:
+                return None
+    return None
+
+
 def calculate_surface_ratio(vessel_type: str) -> float:
     surface_area = SURFACE_AREAS.get(vessel_type)
     if not surface_area:
@@ -325,15 +354,24 @@ def experiments_endpoint():
     if request.method == 'POST':
         data = request.json
         seeding_date = datetime.strptime(data.get('seeding_date'), '%Y-%m-%d').date() if data.get('seeding_date') else None
+        vessels_seeded = data.get('vessels_seeded')
+        if isinstance(vessels_seeded, str) and vessels_seeded.strip():
+            try:
+                vessels_seeded = int(vessels_seeded)
+            except ValueError:
+                vessels_seeded = None
+        cells_to_seed = parse_shorthand_number(data.get('cells_to_seed'))
+        if cells_to_seed is None:
+            return jsonify({'error': 'cells_to_seed is required'}), 400
         experiment = Experiment(
             cell_line=data['cell_line'],
             passage_number=data.get('passage_number'),
-            cell_concentration=data.get('cell_concentration'),
-            cells_to_seed=data.get('cells_to_seed'),
+            cell_concentration=parse_shorthand_number(data.get('cell_concentration')),
+            cells_to_seed=cells_to_seed,
             vessel_type=data['vessel_type'],
-            seeding_volume_ml=data.get('seeding_volume_ml'),
+            seeding_volume_ml=parse_shorthand_number(data.get('seeding_volume_ml')),
             media_type=data.get('media_type'),
-            vessels_seeded=data.get('vessels_seeded'),
+            vessels_seeded=vessels_seeded,
             seeding_date=seeding_date,
         )
         db.session.add(experiment)
@@ -348,10 +386,32 @@ def experiments_endpoint():
 def update_experiment(experiment_id):
     experiment = Experiment.query.get_or_404(experiment_id)
     data = request.json
-    for field in ['cell_line', 'passage_number', 'cell_concentration', 'cells_to_seed',
-                  'vessel_type', 'seeding_volume_ml', 'media_type', 'vessels_seeded']:
-        if field in data:
-            setattr(experiment, field, data[field])
+    updates = {
+        'cell_line': data.get('cell_line'),
+        'passage_number': data.get('passage_number'),
+        'cell_concentration': parse_shorthand_number(data.get('cell_concentration')),
+        'cells_to_seed': None,
+        'vessel_type': data.get('vessel_type'),
+        'seeding_volume_ml': parse_shorthand_number(data.get('seeding_volume_ml')),
+        'media_type': data.get('media_type'),
+        'vessels_seeded': None,
+    }
+    if 'vessels_seeded' in data:
+        vessels_seeded = data.get('vessels_seeded')
+        if isinstance(vessels_seeded, str) and vessels_seeded.strip():
+            try:
+                vessels_seeded = int(vessels_seeded)
+            except ValueError:
+                vessels_seeded = None
+        updates['vessels_seeded'] = vessels_seeded
+    if 'cells_to_seed' in data:
+        cells_to_seed = parse_shorthand_number(data.get('cells_to_seed'))
+        if cells_to_seed is None:
+            return jsonify({'error': 'cells_to_seed is required'}), 400
+        updates['cells_to_seed'] = cells_to_seed
+    for field, value in updates.items():
+        if value is not None or field in data:
+            setattr(experiment, field, value)
     if 'seeding_date' in data:
         experiment.seeding_date = datetime.strptime(data['seeding_date'], '%Y-%m-%d').date() if data['seeding_date'] else None
     db.session.commit()

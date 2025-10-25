@@ -7,7 +7,6 @@ const api = {
     titerRuns: (prepId) => `/api/preps/${prepId}/titer-runs`,
     titerResults: (runId) => `/api/titer-runs/${runId}/results`,
     metrics: {
-        seeding: '/api/metrics/seeding',
         transfection: '/api/metrics/transfection'
     }
 };
@@ -90,27 +89,19 @@ function parseNumericInput(rawValue) {
     return null;
 }
 
-function updateSeedingVolume() {
-    const vessel = document.getElementById('seedingVesselSelect').value;
-    const cellsInput = document.querySelector('[name="cells_to_seed"]').value;
-    const cells = parseNumericInput(cellsInput);
-    const hint = document.getElementById('seedingVolumeHelp');
-    fetchJSON(api.metrics.seeding, {
-        method: 'POST',
-        body: JSON.stringify({ vessel_type: vessel, target_cells: cells })
-    }).then(data => {
-        document.getElementById('seedingVolume').value = data.seeding_volume_ml;
-        if (hint) {
-            hint.textContent = cells
-                ? 'Based on your target cells and the standard 750,000 cells/mL density.'
-                : 'Based on the base T175 volume scaled to the selected vessel surface area.';
-        }
-    }).catch(console.error);
-}
-
 async function loadExperiments() {
     const data = await fetchJSON(api.experiments);
     experiments = data.experiments;
+    renderExperimentsTable();
+    populateExperimentSelects();
+    const prepSelect = document.getElementById('prepExperimentSelect');
+    if (prepSelect) {
+        const targetId = currentExperimentId || experiments[0]?.id;
+        prepSelect.value = targetId ? targetId.toString() : '';
+    }
+}
+
+function renderExperimentsTable() {
     const tbody = document.querySelector('#experimentsTable tbody');
     tbody.innerHTML = '';
     experiments.forEach(exp => {
@@ -120,7 +111,7 @@ async function loadExperiments() {
             <td>${exp.id}</td>
             <td>${exp.cell_line}</td>
             <td>${exp.vessel_type}</td>
-            <td>${(exp.seeding_volume_ml ?? '—')}</td>
+            <td>${exp.cells_to_seed ? Number(exp.cells_to_seed).toLocaleString() : '—'}</td>
             <td>${exp.media_type ?? '—'}</td>
             <td>${exp.vessels_seeded ?? '—'}</td>
             <td>${formatDateTime(exp.updated_at)}</td>
@@ -128,12 +119,6 @@ async function loadExperiments() {
         tr.addEventListener('dblclick', () => fillSeedingForm(exp));
         tbody.appendChild(tr);
     });
-    populateExperimentSelects();
-    const prepSelect = document.getElementById('prepExperimentSelect');
-    if (prepSelect) {
-        const targetId = currentExperimentId || experiments[0]?.id;
-        prepSelect.value = targetId ? targetId.toString() : '';
-    }
 }
 
 function populateExperimentSelects() {
@@ -155,10 +140,8 @@ function fillSeedingForm(exp) {
         form.cell_line.value = form.cell_line.options[0]?.value ?? '';
     }
     form.passage_number.value = exp.passage_number ?? '';
-    form.cell_concentration.value = exp.cell_concentration ?? '';
     form.cells_to_seed.value = exp.cells_to_seed ?? '';
     form.vessel_type.value = exp.vessel_type;
-    form.seeding_volume_ml.value = exp.seeding_volume_ml ?? '';
     form.media_type.value = exp.media_type ?? DEFAULT_MEDIA_TYPE;
     form.vessels_seeded.value = exp.vessels_seeded ?? '';
     form.seeding_date.value = exp.seeding_date ?? '';
@@ -174,18 +157,24 @@ async function submitSeedingForm(event) {
     if (!payload.seeding_date) {
         payload.seeding_date = isoToday();
     }
-    payload.cell_concentration = parseNumericInput(payload.cell_concentration);
     payload.cells_to_seed = parseNumericInput(payload.cells_to_seed);
-    payload.seeding_volume_ml = parseNumericInput(payload.seeding_volume_ml);
     payload.vessels_seeded = payload.vessels_seeded ? parseInt(payload.vessels_seeded, 10) : null;
+    if (payload.cells_to_seed === null || Number.isNaN(payload.cells_to_seed)) {
+        alert('Enter the number of cells to seed (e.g. 15M or 750K).');
+        return;
+    }
     const method = form.dataset.id ? 'PUT' : 'POST';
     const url = form.dataset.id ? `${api.experiments}/${form.dataset.id}` : api.experiments;
     try {
-        await fetchJSON(url, { method, body: JSON.stringify(payload) });
+        const result = await fetchJSON(url, { method, body: JSON.stringify(payload) });
+        if (method === 'POST' && result?.experiment) {
+            experiments = [result.experiment, ...experiments];
+            renderExperimentsTable();
+            populateExperimentSelects();
+        }
         form.reset();
         delete form.dataset.id;
         resetSeedingDefaults();
-        updateSeedingVolume();
         await loadExperiments();
     } catch (error) {
         console.error(error);
@@ -625,8 +614,6 @@ function copySummaryToClipboard() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     resetSeedingDefaults();
-    document.getElementById('seedingVesselSelect').addEventListener('change', updateSeedingVolume);
-    document.querySelector('[name="cells_to_seed"]').addEventListener('input', updateSeedingVolume);
     document.getElementById('seedingForm').addEventListener('submit', submitSeedingForm);
     document.getElementById('refreshExperiments').addEventListener('click', loadExperiments);
     document.getElementById('prepExperimentSelect').addEventListener('change', (e) => loadPreps(parseInt(e.target.value, 10)));
@@ -662,6 +649,5 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadPreps(null);
     }
     resetSeedingDefaults();
-    updateSeedingVolume();
     updateTransfectionMetrics();
 });
