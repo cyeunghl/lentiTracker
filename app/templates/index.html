@@ -4,82 +4,93 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lentivirus Production Tracker</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
-<body>
-<nav class="navbar navbar-expand-lg pastel-navbar mb-4">
-    <div class="container-fluid">
-        <span class="navbar-brand">Lentivirus Production Tracker</span>
-        <button class="btn" id="refreshExperiments">Refresh Records</button>
+<body class="app-shell">
+<header class="app-header">
+    <div class="header-title">
+        <span class="app-logo">LT</span>
+        <div>
+            <h1>Lentivirus Production Tracker</h1>
+            <p class="subtitle">Plan, record, and analyze every step of your lentivirus workflow.</p>
+        </div>
     </div>
-</nav>
-<div class="container-fluid pb-5">
-    <div class="row">
-        <div class="col-lg-4 mb-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary">
-                    <h5 class="mb-0">1. Cell Seeding (Day 0)</h5>
-                </div>
-                <div class="card-body">
-                    <form id="seedingForm" class="needs-validation" novalidate>
-                        <div class="mb-3">
-                            <label class="form-label">Cell Line</label>
-                            <select name="cell_line" class="form-select" required>
+    <div class="header-actions">
+        <button class="ghost-button" id="refreshExperiments" type="button">Refresh Experiments</button>
+    </div>
+</header>
+<div class="app-body">
+    <aside class="step-sidebar" aria-label="Workflow navigation">
+        <button class="step-link active" data-target="step-seeding">1. Cell Seeding</button>
+        <button class="step-link" data-target="step-prep">2. Lentivirus Prep</button>
+        <button class="step-link" data-target="step-transfection">3. Transfection</button>
+        <button class="step-link" data-target="step-media">4. Media Change</button>
+        <button class="step-link" data-target="step-harvest">5. Viral Harvest</button>
+        <button class="step-link" data-target="step-titer-setup">6. Titer Setup</button>
+        <button class="step-link" data-target="step-titer-results">7. Titer Results</button>
+    </aside>
+    <main class="step-content">
+        <section class="step-panel active" id="step-seeding">
+            <div class="panel-grid">
+                <div class="card">
+                    <header class="card-header">
+                        <h2>1. Cell Seeding (Day 0)</h2>
+                        <p class="card-subtitle">Record the seed parameters to anchor downstream steps.</p>
+                    </header>
+                    <form id="seedingForm" class="form-grid" novalidate>
+                        <div class="form-group">
+                            <label for="cellLineSelect">Cell Line</label>
+                            <select id="cellLineSelect" name="cell_line" required>
                                 <option value="HEK293T">HEK293T</option>
                                 <option value="HEK293FT">HEK293FT</option>
                             </select>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Passage #</label>
-                            <input type="text" name="passage_number" class="form-control">
+                        <div class="form-group">
+                            <label for="passageNumber">Passage #</label>
+                            <input id="passageNumber" type="text" name="passage_number" placeholder="e.g. P10">
                         </div>
-                        <div class="row g-2">
-                            <div class="col">
-                                <label class="form-label">Cells to Seed</label>
-                                <input type="text" name="cells_to_seed" class="form-control" placeholder="e.g. 15M or 750K" required>
-                                <div class="form-text">Enter total cells. Shorthand like 750K or 1.5M is supported.</div>
-                            </div>
-                            <div class="col">
-                                <label class="form-label">Vessel Type</label>
-                                <select name="vessel_type" class="form-select" required id="seedingVesselSelect">
-                                    {% for vessel, area in surface_areas.items() %}
-                                    <option value="{{ vessel }}">{{ vessel }} ({{ area }} cm²)</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
+                        <div class="form-group">
+                            <label for="cellsToSeed">Cells to Seed</label>
+                            <input id="cellsToSeed" type="text" name="cells_to_seed" placeholder="e.g. 15M or 750K" required>
+                            <span class="field-hint">Shorthand like 750K or 1.5M is supported.</span>
                         </div>
-                        <div class="row g-2 mt-2">
-                            <div class="col">
-                                <label class="form-label">Media Type</label>
-                                <input type="text" name="media_type" class="form-control" value="{{ default_media }}">
-                            </div>
-                            <div class="col">
-                                <label class="form-label"># of Vessels Seeded</label>
-                                <input type="number" name="vessels_seeded" class="form-control" min="1" value="1">
-                            </div>
+                        <div class="form-group">
+                            <label for="vesselType">Vessel Type</label>
+                            <select id="vesselType" name="vessel_type" required>
+                                {% for vessel, area in surface_areas.items() %}
+                                <option value="{{ vessel }}">{{ vessel }} ({{ area }} cm²)</option>
+                                {% endfor %}
+                            </select>
                         </div>
-                        <div class="mt-3">
-                            <label class="form-label">Seeding Date</label>
-                            <input type="date" name="seeding_date" class="form-control" value="{{ today }}">
+                        <div class="form-group">
+                            <label for="mediaType">Media Type</label>
+                            <input id="mediaType" type="text" name="media_type" value="{{ default_media }}">
                         </div>
-                        <div class="d-grid mt-3">
-                            <button class="btn btn-primary" type="submit">Save Experiment</button>
+                        <div class="form-group">
+                            <label for="vesselsSeeded"># of Vessels Seeded</label>
+                            <input id="vesselsSeeded" type="number" name="vessels_seeded" min="1" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="seedingDate">Seeding Date</label>
+                            <input id="seedingDate" type="date" name="seeding_date" value="{{ today }}">
+                        </div>
+                        <div class="form-actions">
+                            <button class="primary-button" type="submit">Save Experiment</button>
+                            <button class="ghost-button" type="reset" id="resetSeeding">Reset</button>
                         </div>
                     </form>
                 </div>
-            </div>
-        </div>
-        <div class="col-lg-8 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-secondary d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Experiment Records</h5>
-                    <span class="small">Double-click a row to load into the seeding form.</span>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-striped mb-0" id="experimentsTable">
-                            <thead class="table-light">
+                <div class="card">
+                    <header class="card-header">
+                        <h2>Experiment Records</h2>
+                        <p class="card-subtitle">Double-click an entry to load it back into the form.</p>
+                    </header>
+                    <div class="table-wrapper">
+                        <table id="experimentsTable">
+                            <thead>
                                 <tr>
                                     <th>ID</th>
                                     <th>Cell Line</th>
@@ -95,280 +106,265 @@
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary">
-                    <h5 class="mb-0">2. Lentivirus Preparation Setup</h5>
-                </div>
-                <div class="card-body">
-                    <form id="prepForm">
-                        <div class="row g-2">
-                            <div class="col">
-                                <label class="form-label">Experiment</label>
-                                <select class="form-select" id="prepExperimentSelect"></select>
-                            </div>
-                            <div class="col">
-                                <label class="form-label">Transfer Plasmid Name</label>
-                                <input type="text" class="form-control" id="transferName" required>
-                            </div>
+        </section>
+        <section class="step-panel" id="step-prep">
+            <div class="panel-grid">
+                <div class="card">
+                    <header class="card-header">
+                        <h2>2. Lentivirus Preparation</h2>
+                        <p class="card-subtitle">Link transfer plasmids to experiments and print clean labels.</p>
+                    </header>
+                    <form id="prepForm" class="form-grid">
+                        <div class="form-group">
+                            <label for="prepExperimentSelect">Experiment</label>
+                            <select id="prepExperimentSelect" required></select>
                         </div>
-                        <div class="row g-2 mt-2">
-                            <div class="col">
-                                <label class="form-label">Concentration (ng/µL)</label>
-                                <input type="number" step="any" class="form-control" id="transferConcentration">
-                            </div>
-                            <div class="col">
-                                <label class="form-label">Plasmid Size (bp)</label>
-                                <input type="number" class="form-control" id="plasmidSize">
-                            </div>
+                        <div class="form-group">
+                            <label for="transferName">Transfer Plasmid Name</label>
+                            <input id="transferName" type="text" required placeholder="e.g. pLenti-GFP">
                         </div>
-                        <div class="row g-2 mt-2">
-                            <div class="col">
-                                <label class="form-label">Cell Line (Production)</label>
-                                <input type="text" class="form-control" id="productionCellLine" placeholder="HEK293FT">
-                            </div>
-                            <div class="col d-flex align-items-end">
-                                <button class="btn btn-outline-secondary w-100" id="printPrepLabel" type="button">Print Label</button>
-                            </div>
+                        <div class="form-group">
+                            <label for="transferConcentration">Concentration (ng/µL)</label>
+                            <input id="transferConcentration" type="number" step="any" placeholder="e.g. 450">
                         </div>
-                        <div class="d-grid mt-3">
-                            <button class="btn btn-primary" type="submit">Save Lentivirus Prep</button>
+                        <div class="form-group">
+                            <label for="plasmidSize">Plasmid Size (bp)</label>
+                            <input id="plasmidSize" type="number" placeholder="e.g. 9500">
                         </div>
-                    </form>
-                    <div class="mt-3">
-                        <h6>Saved Lentivirus Preparations</h6>
-                        <ul class="list-group" id="prepList"></ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary">
-                    <h5 class="mb-0">3. Transfection (Day 1 PM)</h5>
-                </div>
-                <div class="card-body">
-                    <form id="transfectionForm">
-                        <div class="row g-2">
-                            <div class="col">
-                                <label class="form-label">Lentivirus Prep</label>
-                                <select class="form-select" id="transfectionPrepSelect" required></select>
-                            </div>
-                            <div class="col">
-                                <label class="form-label">Vessel Type</label>
-                                <select class="form-select" id="transfectionVessel" required>
-                                    {% for vessel in surface_areas.keys() %}
-                                    <option value="{{ vessel }}">{{ vessel }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
+                        <div class="form-group">
+                            <label for="productionCellLine">Production Cell Line</label>
+                            <input id="productionCellLine" type="text" placeholder="HEK293FT">
                         </div>
-                        <div class="row g-2 mt-2">
-                            <div class="col">
-                                <label class="form-label">Molar Ratio Mode</label>
-                                <select class="form-select" id="ratioMode">
-                                    <option value="optimal">4:3:1 (transfer:packaging:envelope)</option>
-                                    <option value="custom">Other</option>
-                                </select>
-                            </div>
-                            <div class="col">
-                                <label class="form-label">Custom Ratio</label>
-                                <input type="text" class="form-control" id="customRatio" placeholder="e.g. 5,3,1" disabled>
-                            </div>
-                        </div>
-                        <div class="row g-2 mt-3" id="transfectionResults"></div>
-                        <div class="d-grid mt-3">
-                            <button class="btn btn-primary" type="submit">Save Transfection</button>
+                        <div class="form-actions">
+                            <button class="primary-button" type="submit">Save Prep</button>
+                            <button class="ghost-button" type="button" id="printPrepLabel">Print Label</button>
                         </div>
                     </form>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-lg-4 mb-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary">
-                    <h5 class="mb-0">4. Media Change</h5>
+                <div class="card">
+                    <header class="card-header">
+                        <h2>Saved Preparations</h2>
+                        <p class="card-subtitle">Track which plasmids belong to each experiment.</p>
+                    </header>
+                    <ul class="list-stack" id="prepList"></ul>
                 </div>
-                <div class="card-body">
-                    <form id="mediaForm">
-                        <div class="mb-3">
-                            <label class="form-label">Lentivirus Prep</label>
-                            <select class="form-select" id="mediaPrepSelect"></select>
+            </div>
+        </section>
+        <section class="step-panel" id="step-transfection">
+            <div class="panel-grid">
+                <div class="card">
+                    <header class="card-header">
+                        <h2>3. Transfection (Day 1 PM)</h2>
+                        <p class="card-subtitle">Scale reagents automatically from the T175 baseline.</p>
+                    </header>
+                    <form id="transfectionForm" class="form-grid">
+                        <div class="form-group">
+                            <label for="transfectionPrepSelect">Lentivirus Prep</label>
+                            <select id="transfectionPrepSelect" required></select>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Media Type</label>
-                            <select class="form-select" id="mediaType">
-                                <option>DMEM + 20% iFBS</option>
-                                <option>DMEM + 10% iFBS</option>
-                                <option selected>DMEM + 10% FBS</option>
+                        <div class="form-group">
+                            <label for="transfectionVessel">Vessel Type</label>
+                            <select id="transfectionVessel" required>
+                                {% for vessel in surface_areas.keys() %}
+                                <option value="{{ vessel }}">{{ vessel }}</option>
+                                {% endfor %}
                             </select>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Volume (mL)</label>
-                            <input type="number" step="any" class="form-control" id="mediaVolume" required>
+                        <div class="form-group">
+                            <label for="ratioMode">Molar Ratio</label>
+                            <select id="ratioMode">
+                                <option value="optimal">4:3:1 (transfer:packaging:envelope)</option>
+                                <option value="custom">Custom</option>
+                            </select>
                         </div>
-                        <div class="d-grid">
-                            <button class="btn btn-primary" type="submit">Save Media Change</button>
+                        <div class="form-group">
+                            <label for="customRatio">Custom Ratio</label>
+                            <input id="customRatio" type="text" placeholder="e.g. 5,3,1" disabled>
                         </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-4 mb-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary">
-                    <h5 class="mb-0">5. Viral Harvest</h5>
-                </div>
-                <div class="card-body">
-                    <form id="harvestForm">
-                        <div class="mb-3">
-                            <label class="form-label">Lentivirus Prep</label>
-                            <select class="form-select" id="harvestPrepSelect"></select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Harvest Date</label>
-                            <input type="date" class="form-control" id="harvestDate">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Volume (mL)</label>
-                            <input type="number" step="any" class="form-control" id="harvestVolume">
-                        </div>
-                        <div class="d-grid gap-2">
-                            <button class="btn btn-primary" type="submit">Save Harvest</button>
-                            <button class="btn btn-outline-secondary" type="button" id="printHarvestLabel">Print Harvest Labels</button>
+                        <div class="metrics-grid" id="transfectionResults"></div>
+                        <div class="form-actions">
+                            <button class="primary-button" type="submit">Save Transfection</button>
                         </div>
                     </form>
                 </div>
-            </div>
-        </div>
-        <div class="col-lg-4 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Label Preview</h5>
+                <div class="card">
+                    <header class="card-header">
+                        <h2>Transfection Primer</h2>
+                        <p class="card-subtitle">Baseline: 1 mL Opti-MEM, 76.8 µL X-tremeGENE 9, 25.6 µg plasmid mix.</p>
+                    </header>
+                    <ul class="info-list">
+                        <li>Packaging plasmid (psPAX2): 10,709 bp</li>
+                        <li>Envelope plasmid (pMD2.G): 5,822 bp</li>
+                        <li>Optimal mass ratio 4:3:1 (transfer : packaging : envelope)</li>
+                    </ul>
                 </div>
-                <div class="card-body">
-                    <div id="labelPreview" class="border rounded p-3 text-center text-uppercase small">
-                        Select a prep to preview labels.
+            </div>
+        </section>
+        <section class="step-panel" id="step-media">
+            <div class="panel-grid">
+                <div class="card">
+                    <header class="card-header">
+                        <h2>4. Media Change</h2>
+                        <p class="card-subtitle">Document feed volumes for each prep.</p>
+                    </header>
+                    <form id="mediaForm" class="form-grid">
+                        <div class="form-group">
+                            <label for="mediaPrepSelect">Lentivirus Prep</label>
+                            <select id="mediaPrepSelect" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="mediaTypeSelect">Media Used</label>
+                            <select id="mediaTypeSelect" name="media_used">
+                                <option value="DMEM + 10% FBS">DMEM + 10% FBS</option>
+                                <option value="DMEM + 10% iFBS">DMEM + 10% iFBS</option>
+                                <option value="DMEM + 20% iFBS">DMEM + 20% iFBS</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="mediaVolume">Volume (mL)</label>
+                            <input id="mediaVolume" type="number" step="any" placeholder="e.g. 25">
+                        </div>
+                        <div class="form-actions">
+                            <button class="primary-button" type="submit">Save Media Change</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card">
+                    <header class="card-header">
+                        <h2>Recent Media Changes</h2>
+                        <p class="card-subtitle">Automatically surfaces after saving a prep.</p>
+                    </header>
+                    <div class="info-board" id="mediaSummary"></div>
+                </div>
+            </div>
+        </section>
+        <section class="step-panel" id="step-harvest">
+            <div class="panel-grid">
+                <div class="card">
+                    <header class="card-header">
+                        <h2>5. Viral Harvest</h2>
+                        <p class="card-subtitle">Capture harvest dates and volumes, plus printable labels.</p>
+                    </header>
+                    <form id="harvestForm" class="form-grid">
+                        <div class="form-group">
+                            <label for="harvestPrepSelect">Lentivirus Prep</label>
+                            <select id="harvestPrepSelect" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="harvestDate">Harvest Date</label>
+                            <input id="harvestDate" type="date" required value="{{ today }}">
+                        </div>
+                        <div class="form-group">
+                            <label for="harvestVolume">Harvest Volume (mL)</label>
+                            <input id="harvestVolume" type="number" step="any" placeholder="e.g. 100">
+                        </div>
+                        <div class="form-actions">
+                            <button class="primary-button" type="submit">Save Harvest</button>
+                            <button class="ghost-button" type="button" id="printHarvestLabel">Print Label</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card">
+                    <header class="card-header">
+                        <h2>Label Preview</h2>
+                        <p class="card-subtitle">Transfer plasmid — Cell line — Date — Volume</p>
+                    </header>
+                    <pre class="label-preview" id="harvestLabelPreview">Select a prep to preview its label.</pre>
+                </div>
+            </div>
+        </section>
+        <section class="step-panel" id="step-titer-setup">
+            <div class="panel-grid">
+                <div class="card">
+                    <header class="card-header">
+                        <h2>6. Lentivirus Titering Setup</h2>
+                        <p class="card-subtitle">Design the infection series and save before recording results.</p>
+                    </header>
+                    <form id="titerSetupForm" class="form-grid">
+                        <div class="form-group">
+                            <label for="titerPrepSelect">Lentivirus Prep</label>
+                            <select id="titerPrepSelect" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="titerCellLine">Cell Line for Infection</label>
+                            <input id="titerCellLine" type="text" placeholder="e.g. HEK293T">
+                        </div>
+                        <div class="form-group">
+                            <label for="titerCellsSeeded">Cells Seeded per Well</label>
+                            <input id="titerCellsSeeded" type="text" placeholder="e.g. 20K">
+                        </div>
+                        <div class="form-group">
+                            <label for="titerVessel">Vessel Type</label>
+                            <select id="titerVessel">
+                                <option value="96-well">96-well</option>
+                                <option value="24-well">24-well</option>
+                                <option value="6-well">6-well</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="titerSelection">Selection Reagent + Concentration</label>
+                            <input id="titerSelection" type="text" placeholder="e.g. Puromycin 1 µg/mL">
+                        </div>
+                        <div class="form-group">
+                            <label for="titerConditions">Number of Test Conditions</label>
+                            <input id="titerConditions" type="number" min="1" value="3">
+                        </div>
+                        <div class="form-actions">
+                            <button class="ghost-button" type="button" id="generateTiterInputs">Generate Inputs</button>
+                            <button class="primary-button" type="submit">Save Titer Setup</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card">
+                    <header class="card-header">
+                        <h2>Experimental Layout</h2>
+                        <p class="card-subtitle">One row per test volume plus two controls.</p>
+                    </header>
+                    <div id="titerInputContainer" class="titer-grid"></div>
+                </div>
+            </div>
+        </section>
+        <section class="step-panel" id="step-titer-results">
+            <div class="panel-grid">
+                <div class="card">
+                    <header class="card-header">
+                        <h2>7. Record Results & Calculate Titer</h2>
+                        <p class="card-subtitle">Normalize to the untreated control, compute MOI, and chart outcomes.</p>
+                    </header>
+                    <form id="titerResultsForm" class="form-grid">
+                        <div class="form-group">
+                            <label for="titerRunSelect">Titer Run</label>
+                            <select id="titerRunSelect" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="controlPercent">Control Survival (%)</label>
+                            <input id="controlPercent" type="number" min="0" max="100" step="any" placeholder="e.g. 95">
+                        </div>
+                        <div id="titerResultsContainer" class="titer-grid"></div>
+                        <div class="form-actions">
+                            <button class="primary-button" type="submit">Save Results</button>
+                            <button class="ghost-button" type="button" id="copySummary">Copy Summary</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card">
+                    <header class="card-header">
+                        <h2>Titer Analytics</h2>
+                        <p class="card-subtitle">MOI plot and aggregate TU/mL.</p>
+                    </header>
+                    <div class="analytics">
+                        <canvas id="moiChart" height="240"></canvas>
+                        <div class="metric-callout">
+                            <span>Average Titer</span>
+                            <strong id="averageTiter">—</strong>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-12 mb-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">6. Lentivirus Titering</h5>
-                </div>
-                <div class="card-body">
-                    <form id="titerSetupForm">
-                        <div class="row g-2">
-                            <div class="col-md-3">
-                                <label class="form-label">Lentivirus Prep</label>
-                                <select class="form-select" id="titerPrepSelect" required></select>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">Cell Line</label>
-                                <input type="text" class="form-control" id="titerCellLine" required>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Cells Seeded</label>
-                                <input type="number" step="any" class="form-control" id="titerCellsSeeded" required>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Vessel Type</label>
-                                <select class="form-select" id="titerVessel" required>
-                                    {% for vessel in surface_areas.keys() %}
-                                    <option value="{{ vessel }}">{{ vessel }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label"># Test Conditions</label>
-                                <input type="number" class="form-control" id="titerTests" min="1" value="1">
-                            </div>
-                        </div>
-                        <div class="row g-2 mt-2">
-                            <div class="col-md-4">
-                                <label class="form-label">Selection Reagent</label>
-                                <input type="text" class="form-control" id="selectionReagent" placeholder="e.g. Puromycin">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Selection Concentration</label>
-                                <input type="text" class="form-control" id="selectionConcentration" placeholder="e.g. 1 µg/mL">
-                            </div>
-                            <div class="col-md-4 d-flex align-items-end">
-                                <button class="btn btn-outline-secondary w-100" type="button" id="generateTiterInputs">Generate Inputs</button>
-                            </div>
-                        </div>
-                        <div class="mt-3" id="titerSamplesContainer"></div>
-                        <div class="d-grid mt-3">
-                            <button class="btn btn-primary" type="submit">Save Titer Setup</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">7. Record Results &amp; Calculate Titer</h5>
-                </div>
-                <div class="card-body">
-                    <form id="titerResultsForm">
-                        <div class="mb-3">
-                            <label class="form-label">Titer Run</label>
-                            <select class="form-select" id="titerRunSelect"></select>
-                        </div>
-                        <div class="row g-2">
-                            <div class="col">
-                                <label class="form-label">Control (% survival, no LV)</label>
-                                <input type="number" class="form-control" id="controlPercent" value="100">
-                            </div>
-                            <div class="col">
-                                <label class="form-label">Control (+ selection) %</label>
-                                <input type="number" class="form-control" id="controlSelectionPercent" placeholder="Optional">
-                            </div>
-                        </div>
-                        <div class="mt-3" id="titerResultsContainer"></div>
-                        <div class="d-grid mt-3">
-                            <button class="btn btn-primary" type="submit">Calculate Titer</button>
-                        </div>
-                    </form>
-                    <div class="mt-4">
-                        <h6>Average Titer</h6>
-                        <p id="averageTiter" class="fs-5 fw-bold text-primary">—</p>
-                        <button class="btn btn-outline-secondary" id="copySummary" type="button">Copy Summary</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">MOI vs % Infected</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="moiChart" height="240"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
+        </section>
+    </main>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script>const SURFACE_AREAS = {{ surface_areas|tojson }};</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-Ak+09b3r0oL8og/ckwFK6xDMNKlqgYHowEZA6c/6xDeXxF0e45EnBdTHkpHXyujr" crossorigin="anonymous"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
