@@ -1,17 +1,28 @@
 import math
 from datetime import datetime
 from pathlib import Path
+
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from sqlalchemy import inspect, text
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / 'lenti_tracker.db'
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+INSTANCE_PATH = BASE_DIR / 'instance'
+INSTANCE_PATH.mkdir(parents=True, exist_ok=True)
+DB_PATH = INSTANCE_PATH / 'lenti_tracker.db'
+LEGACY_DB_PATH = BASE_DIR / 'lenti_tracker.db'
+if LEGACY_DB_PATH.exists() and not DB_PATH.exists():
+    LEGACY_DB_PATH.replace(DB_PATH)
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'connect_args': {
+        'check_same_thread': False,
+    }
+}
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -338,6 +349,59 @@ def compute_titer(cells_at_transduction: float, moi: float, virus_volume_ul: flo
     return cells_at_transduction * (moi / volume_ml)
 
 
+def ensure_sqlite_schema():
+    """Add any missing columns that newer builds require."""
+    engine = db.engine
+    if not engine.url.drivername.startswith('sqlite'):
+        return
+    inspector = inspect(engine)
+    if 'experiments' not in inspector.get_table_names():
+        return
+    existing_columns = {column['name'] for column in inspector.get_columns('experiments')}
+    required_columns = {
+        'passage_number': 'VARCHAR(64)',
+        'cell_concentration': 'FLOAT',
+        'cells_to_seed': 'FLOAT',
+        'vessel_type': 'VARCHAR(64)',
+        'media_type': 'VARCHAR(128)',
+        'vessels_seeded': 'INTEGER',
+        'seeding_date': 'DATE',
+        'seeding_volume_ml': 'FLOAT',
+        'created_at': 'DATETIME',
+        'updated_at': 'DATETIME',
+    }
+    missing = {name: ddl for name, ddl in required_columns.items() if name not in existing_columns}
+    if not missing:
+        return
+    with engine.begin() as connection:
+        for column_name, column_type in missing.items():
+            connection.execute(text(f'ALTER TABLE experiments ADD COLUMN {column_name} {column_type}'))
+        if 'media_type' in missing:
+            connection.execute(
+                text("UPDATE experiments SET media_type = 'DMEM + 10% FBS' WHERE media_type IS NULL")
+            )
+        if 'vessels_seeded' in missing:
+            connection.execute(
+                text('UPDATE experiments SET vessels_seeded = 1 WHERE vessels_seeded IS NULL')
+            )
+        if 'seeding_date' in missing:
+            today = datetime.utcnow().date().isoformat()
+            connection.execute(
+                text('UPDATE experiments SET seeding_date = COALESCE(seeding_date, :today)'),
+                {'today': today},
+            )
+        if 'created_at' in missing or 'updated_at' in missing:
+            now = datetime.utcnow().isoformat()
+            connection.execute(
+                text(
+                    "UPDATE experiments "
+                    "SET created_at = COALESCE(created_at, :now), "
+                    "updated_at = COALESCE(updated_at, :now)"
+                ),
+                {'now': now},
+            )
+
+
 @app.route('/')
 def index():
     today = datetime.utcnow().date().isoformat()
@@ -363,6 +427,10 @@ def experiments_endpoint():
         cells_to_seed = parse_shorthand_number(data.get('cells_to_seed'))
         if cells_to_seed is None:
             return jsonify({'error': 'cells_to_seed is required'}), 400
+        if seeding_date is None:
+            seeding_date = datetime.utcnow().date()
+        if vessels_seeded in (None, ''):
+            vessels_seeded = 1
         experiment = Experiment(
             cell_line=data['cell_line'],
             passage_number=data.get('passage_number'),
@@ -370,12 +438,17 @@ def experiments_endpoint():
             cells_to_seed=cells_to_seed,
             vessel_type=data['vessel_type'],
             seeding_volume_ml=parse_shorthand_number(data.get('seeding_volume_ml')),
-            media_type=data.get('media_type'),
+            media_type=data.get('media_type') or 'DMEM + 10% FBS',
             vessels_seeded=vessels_seeded,
             seeding_date=seeding_date,
         )
-        db.session.add(experiment)
-        db.session.commit()
+        try:
+            db.session.add(experiment)
+            db.session.commit()
+        except Exception as exc:  # pragma: no cover - defensive handling
+            db.session.rollback()
+            app.logger.exception('Failed to persist experiment')
+            return jsonify({'error': 'Unable to save experiment', 'details': str(exc)}), 500
         return jsonify({'experiment': experiment.to_dict()})
 
     experiments = Experiment.query.order_by(Experiment.created_at.desc()).all()
@@ -607,6 +680,7 @@ def metrics_titer():
 
 with app.app_context():
     db.create_all()
+    ensure_sqlite_schema()
 
 
 if __name__ == '__main__':

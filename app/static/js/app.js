@@ -56,7 +56,14 @@ async function fetchJSON(url, options = {}) {
     });
     if (!response.ok) {
         const text = await response.text();
-        throw new Error(text || 'Request failed');
+        let message = text || 'Request failed';
+        try {
+            const parsed = JSON.parse(text);
+            message = parsed.error || parsed.details || message;
+        } catch (err) {
+            // ignore JSON parse errors and fall back to raw text
+        }
+        throw new Error(message);
     }
     return response.json();
 }
@@ -90,14 +97,19 @@ function parseNumericInput(rawValue) {
 }
 
 async function loadExperiments() {
-    const data = await fetchJSON(api.experiments);
-    experiments = data.experiments;
-    renderExperimentsTable();
-    populateExperimentSelects();
-    const prepSelect = document.getElementById('prepExperimentSelect');
-    if (prepSelect) {
-        const targetId = currentExperimentId || experiments[0]?.id;
-        prepSelect.value = targetId ? targetId.toString() : '';
+    try {
+        const data = await fetchJSON(api.experiments);
+        experiments = data.experiments;
+        renderExperimentsTable();
+        populateExperimentSelects();
+        const prepSelect = document.getElementById('prepExperimentSelect');
+        if (prepSelect) {
+            const targetId = currentExperimentId || experiments[0]?.id;
+            prepSelect.value = targetId ? targetId.toString() : '';
+        }
+    } catch (error) {
+        console.error(error);
+        alert(`Unable to load experiment records: ${error.message}`);
     }
 }
 
@@ -166,16 +178,12 @@ async function submitSeedingForm(event) {
     const method = form.dataset.id ? 'PUT' : 'POST';
     const url = form.dataset.id ? `${api.experiments}/${form.dataset.id}` : api.experiments;
     try {
-        const result = await fetchJSON(url, { method, body: JSON.stringify(payload) });
-        if (method === 'POST' && result?.experiment) {
-            experiments = [result.experiment, ...experiments];
-            renderExperimentsTable();
-            populateExperimentSelects();
-        }
+        await fetchJSON(url, { method, body: JSON.stringify(payload) });
         form.reset();
         delete form.dataset.id;
         resetSeedingDefaults();
         await loadExperiments();
+        alert(method === 'POST' ? 'Experiment saved to the database.' : 'Experiment updated.');
     } catch (error) {
         console.error(error);
         alert(`Unable to save experiment: ${error.message}`);
