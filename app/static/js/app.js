@@ -1,6 +1,8 @@
 const api = {
     experiments: '/api/experiments',
-    preps: (experimentId) => `/api/experiments/${experimentId}/preps`,
+    experimentDetail: (id) => `/api/experiments/${id}`,
+    experimentPreps: (id) => `/api/experiments/${id}/preps`,
+    prep: (id) => `/api/preps/${id}`,
     transfection: (prepId) => `/api/preps/${prepId}/transfection`,
     mediaChange: (prepId) => `/api/preps/${prepId}/media-change`,
     harvest: (prepId) => `/api/preps/${prepId}/harvest`,
@@ -13,698 +15,985 @@ const api = {
 
 const state = {
     experiments: [],
-    preps: [],
-    titerRuns: [],
-    currentExperimentId: null,
+    activeExperiment: null,
     selectedPrepId: null,
-    moiChart: null
+    selectedRunId: null,
+    sampleDraftGenerated: false
 };
 
-const DEFAULT_MEDIA_TYPE = 'DMEM + 10% FBS';
 const SHORTHAND_MULTIPLIERS = { K: 1e3, M: 1e6, B: 1e9 };
 
-function isoToday() {
-    return new Date().toISOString().split('T')[0];
-}
-
-function initStepNavigation() {
-    const buttons = document.querySelectorAll('.step-link');
-    const panels = document.querySelectorAll('.step-panel');
-    buttons.forEach((button) => {
-        button.addEventListener('click', () => {
-            buttons.forEach((btn) => btn.classList.toggle('active', btn === button));
-            panels.forEach((panel) => panel.classList.toggle('active', panel.id === button.dataset.target));
-        });
-    });
-}
-
-function fetchJSON(url, options = {}) {
-    return fetch(url, {
-        headers: { 'Content-Type': 'application/json' },
-        ...options
-    }).then(async (response) => {
-        if (!response.ok) {
-            const text = await response.text();
-            let message = text || 'Request failed';
-            try {
-                const payload = JSON.parse(text);
-                message = payload.error || payload.details || message;
-            } catch (err) {
-                // ignore parsing failures and use original text
-            }
-            throw new Error(message);
-        }
-        return response.json();
-    });
-}
-
-function parseNumericInput(rawValue) {
-    if (rawValue === undefined || rawValue === null) return null;
-    const normalized = rawValue.toString().trim().replace(/,/g, '');
-    if (!normalized) return null;
-    const direct = Number(normalized);
+function parseNumericInput(value) {
+    if (value === undefined || value === null) return null;
+    const text = value.toString().trim().replace(/,/g, '');
+    if (!text) return null;
+    const direct = Number(text);
     if (!Number.isNaN(direct)) return direct;
-    const shorthand = normalized.match(/^(-?\d*\.?\d+)\s*([KMB])(?:[A-Z]*)?$/i);
-    if (shorthand) {
-        const [, base, suffix] = shorthand;
+    const match = text.match(/^(-?\d*\.?\d+)\s*([KMB])(?:[A-Z]*)?$/i);
+    if (match) {
+        const [, base, suffix] = match;
         return Number(base) * SHORTHAND_MULTIPLIERS[suffix.toUpperCase()];
     }
     return null;
 }
 
+async function fetchJSON(url, options = {}) {
+    const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options
+    });
+    if (!response.ok) {
+        let message = 'Request failed';
+        try {
+            const payload = await response.json();
+            message = payload.error || payload.details || message;
+        } catch (error) {
+            const text = await response.text();
+            if (text) message = text;
+        }
+        throw new Error(message);
+    }
+    return response.json();
+}
+
+function isoToday() {
+    return new Date().toISOString().split('T')[0];
+}
+
+function showDashboard() {
+    document.getElementById('dashboardView').classList.add('active');
+    document.getElementById('workflowView').classList.remove('active');
+    state.activeExperiment = null;
+    state.selectedPrepId = null;
+    state.selectedRunId = null;
+}
+
+function showWorkflow() {
+    document.getElementById('dashboardView').classList.remove('active');
+    document.getElementById('workflowView').classList.add('active');
+}
+
+function toggleNewExperimentPanel(show) {
+    const panel = document.getElementById('newExperimentPanel');
+    panel.hidden = !show;
+    if (show) {
+        document.getElementById('experimentName').focus();
+    }
+}
+
+function formatNumber(value) {
+    if (value === null || value === undefined || Number.isNaN(value)) return '—';
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '—';
+    if (number >= 1e6) return `${(number / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
+    if (number >= 1e3) return `${(number / 1e3).toFixed(1).replace(/\.0$/, '')}K`;
+    return number.toLocaleString();
+}
+
+function formatDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString();
+}
+
 function formatDateTime(value) {
     if (!value) return '—';
     const date = new Date(value);
-    return date.toLocaleString();
-}
-
-function resetSeedingDefaults(force = false) {
-    const form = document.getElementById('seedingForm');
-    if (!form) return;
-    if (force || !form.dataset.id) {
-        const mediaInput = form.querySelector('[name="media_type"]');
-        if (mediaInput && !mediaInput.value) {
-            mediaInput.value = DEFAULT_MEDIA_TYPE;
-        }
-        const dateInput = form.querySelector('[name="seeding_date"]');
-        if (dateInput && (!dateInput.value || force)) {
-            dateInput.value = isoToday();
-        }
-    }
+    if (Number.isNaN(date.getTime())) return '—';
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 async function loadExperiments() {
     const data = await fetchJSON(api.experiments);
-    state.experiments = data.experiments;
-    renderExperimentsTable();
-    if (!state.experiments.length) {
-        populateExperimentSelects();
-        await loadPreps(null);
-        return;
-    }
-    if (!state.currentExperimentId && state.experiments.length) {
-        state.currentExperimentId = state.experiments[0].id;
-    }
-    if (state.currentExperimentId && !state.experiments.some((exp) => exp.id === state.currentExperimentId)) {
-        state.currentExperimentId = state.experiments[0].id;
-    }
-    populateExperimentSelects();
-    if (state.currentExperimentId) {
-        await loadPreps(state.currentExperimentId);
-    }
+    state.experiments = data.experiments || [];
+    renderDashboard();
 }
 
-function renderExperimentsTable() {
-    const tbody = document.querySelector('#experimentsTable tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    state.experiments.forEach((exp) => {
-        const tr = document.createElement('tr');
-        tr.dataset.id = exp.id;
-        tr.innerHTML = `
-            <td>${exp.id}</td>
-            <td>${exp.cell_line}</td>
-            <td>${exp.vessel_type}</td>
-            <td>${exp.cells_to_seed ? Number(exp.cells_to_seed).toLocaleString() : '—'}</td>
-            <td>${exp.media_type ?? '—'}</td>
-            <td>${exp.vessels_seeded ?? '—'}</td>
-            <td>${formatDateTime(exp.updated_at)}</td>`;
-        tr.addEventListener('dblclick', () => fillSeedingForm(exp));
-        tbody.appendChild(tr);
+function renderDashboard() {
+    const activeContainer = document.getElementById('activeExperiments');
+    const finishedContainer = document.getElementById('finishedExperiments');
+    activeContainer.innerHTML = '';
+    finishedContainer.innerHTML = '';
+
+    if (!state.experiments.length) {
+        const empty = document.createElement('div');
+        empty.className = 'callout muted';
+        empty.textContent = 'No experiments saved yet. Start by creating a new experiment.';
+        activeContainer.appendChild(empty);
+        return;
+    }
+
+    state.experiments.forEach((experiment) => {
+        const card = createExperimentCard(experiment);
+        if ((experiment.status || 'active') === 'finished') {
+            finishedContainer.appendChild(card);
+        } else {
+            activeContainer.appendChild(card);
+        }
     });
 }
 
-function populateExperimentSelects() {
-    const experimentSelect = document.getElementById('prepExperimentSelect');
-    if (!experimentSelect) return;
-    const options = state.experiments
-        .map((exp) => `<option value="${exp.id}">#${exp.id} · ${exp.cell_line}</option>`)
-        .join('');
-    experimentSelect.innerHTML = `<option value="">Select experiment</option>${options}`;
-    if (state.currentExperimentId) {
-        experimentSelect.value = state.currentExperimentId.toString();
-    }
+function createExperimentCard(experiment) {
+    const card = document.createElement('article');
+    card.className = 'experiment-card';
+    const status = experiment.status || 'active';
+    const vesselsSeeded = experiment.vessels_seeded || 0;
+    const prepCount = experiment.prep_count || 0;
+    const progressText = vesselsSeeded ? `${prepCount}/${vesselsSeeded} preparations saved` : `${prepCount} preparations`;
+
+    card.innerHTML = `
+        <span class="status-chip">${status === 'finished' ? 'Finished' : 'Active'}</span>
+        <h3>${experiment.name || 'Untitled experiment'}</h3>
+        <dl>
+            <dt>Cell line</dt><dd>${experiment.cell_line}</dd>
+            <dt>Cells to seed</dt><dd>${formatNumber(experiment.cells_to_seed)}</dd>
+            <dt>Vessel</dt><dd>${experiment.vessel_type}</dd>
+            <dt>Vessels seeded</dt><dd>${vesselsSeeded || '—'}</dd>
+        </dl>
+        <div class="prep-progress">${progressText}</div>
+    `;
+
+    const actions = document.createElement('div');
+    actions.className = 'card-actions';
+
+    const openButton = document.createElement('button');
+    openButton.className = 'primary';
+    openButton.type = 'button';
+    openButton.textContent = 'Open';
+    openButton.addEventListener('click', () => openExperimentDetail(experiment.id));
+    actions.appendChild(openButton);
+
+    const toggleButton = document.createElement('button');
+    toggleButton.className = 'ghost';
+    toggleButton.type = 'button';
+    toggleButton.textContent = status === 'finished' ? 'Mark active' : 'Mark finished';
+    toggleButton.addEventListener('click', async () => {
+        await updateExperiment(experiment.id, { status: status === 'finished' ? 'active' : 'finished' });
+        await loadExperiments();
+    });
+    actions.appendChild(toggleButton);
+
+    card.appendChild(actions);
+    return card;
 }
 
-function fillSeedingForm(exp) {
-    const form = document.getElementById('seedingForm');
-    if (!form) return;
-    form.dataset.id = exp.id;
-    form.cell_line.value = exp.cell_line;
-    form.passage_number.value = exp.passage_number ?? '';
-    form.cells_to_seed.value = exp.cells_to_seed ? Number(exp.cells_to_seed).toLocaleString() : '';
-    form.vessel_type.value = exp.vessel_type;
-    form.media_type.value = exp.media_type ?? DEFAULT_MEDIA_TYPE;
-    form.vessels_seeded.value = exp.vessels_seeded ?? 1;
-    form.seeding_date.value = exp.seeding_date ?? isoToday();
+async function updateExperiment(id, payload) {
+    await fetchJSON(api.experimentDetail(id), {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+    });
 }
 
-async function handleSeedingSubmit(event) {
+async function deleteExperiment(id) {
+    await fetchJSON(api.experimentDetail(id), { method: 'DELETE' });
+}
+
+async function createExperiment(event) {
     event.preventDefault();
     const form = event.target;
     const payload = Object.fromEntries(new FormData(form));
-    payload.media_type = payload.media_type || DEFAULT_MEDIA_TYPE;
-    payload.seeding_date = payload.seeding_date || isoToday();
     payload.cells_to_seed = parseNumericInput(payload.cells_to_seed);
-    payload.vessels_seeded = payload.vessels_seeded ? parseInt(payload.vessels_seeded, 10) : null;
-    if (payload.cells_to_seed === null || Number.isNaN(payload.cells_to_seed)) {
-        alert('Enter the total cells to seed (use 750K, 1.5M, etc.).');
+    payload.vessels_seeded = payload.vessels_seeded ? Number(payload.vessels_seeded) : 1;
+    payload.media_type = payload.media_type || APP_DEFAULT_MEDIA;
+    payload.seeding_date = payload.seeding_date || isoToday();
+    if (payload.cells_to_seed === null) {
+        alert('Enter the number of cells to seed. Shorthand like 750K is supported.');
         return;
     }
-    const method = form.dataset.id ? 'PUT' : 'POST';
-    const url = form.dataset.id ? `${api.experiments}/${form.dataset.id}` : api.experiments;
-    await fetchJSON(url, { method, body: JSON.stringify(payload) });
-    form.reset();
-    delete form.dataset.id;
-    resetSeedingDefaults(true);
-    await loadExperiments();
-    alert(method === 'POST' ? 'Experiment saved.' : 'Experiment updated.');
-}
-
-function handleSeedingReset() {
-    const form = document.getElementById('seedingForm');
-    if (!form) return;
-    delete form.dataset.id;
-    resetSeedingDefaults(true);
-}
-
-async function loadPreps(experimentId) {
-    if (!experimentId) {
-        state.currentExperimentId = null;
-        state.preps = [];
-        state.selectedPrepId = null;
-        renderPrepList();
-        populatePrepDependentSelects();
-        return;
-    }
-    state.currentExperimentId = experimentId;
-    const data = await fetchJSON(api.preps(experimentId));
-    state.preps = data.preps;
-    state.selectedPrepId = state.preps[0]?.id ?? null;
-    renderPrepList();
-    populatePrepDependentSelects();
-    updateHarvestPreview();
-}
-
-function renderPrepList() {
-    const list = document.getElementById('prepList');
-    if (!list) return;
-    list.innerHTML = '';
-    if (!state.preps.length) {
-        list.innerHTML = '<li class="empty">No lentivirus preparations saved yet.</li>';
-        return;
-    }
-    state.preps.forEach((prep) => {
-        const li = document.createElement('li');
-        li.dataset.id = prep.id;
-        li.innerHTML = `
-            <strong>${prep.transfer_name}</strong>
-            <span>${prep.cell_line_used ?? 'HEK293FT'} · ${new Date(prep.created_at).toLocaleDateString()}</span>`;
-        if (state.selectedPrepId === prep.id) {
-            li.classList.add('is-selected');
-        }
-        li.addEventListener('click', () => {
-            state.selectedPrepId = prep.id;
-            document.querySelectorAll('#prepList li').forEach((item) => item.classList.toggle('is-selected', item === li));
-            ['transfectionPrepSelect', 'mediaPrepSelect', 'harvestPrepSelect', 'titerPrepSelect'].forEach((id) => {
-                const select = document.getElementById(id);
-                if (select) {
-                    select.value = prep.id;
-                }
-            });
-            updateHarvestPreview();
-        });
-        list.appendChild(li);
-    });
-}
-
-function populatePrepDependentSelects() {
-    const hasPreps = state.preps.length > 0;
-    const optionMarkup = hasPreps
-        ? state.preps.map((prep) => `<option value="${prep.id}">${prep.transfer_name} · Prep #${prep.id}</option>`).join('')
-        : '<option value="">No preps available</option>';
-    ['transfectionPrepSelect', 'mediaPrepSelect', 'harvestPrepSelect', 'titerPrepSelect'].forEach((id) => {
-        const select = document.getElementById(id);
-        if (!select) return;
-        select.innerHTML = optionMarkup;
-        if (hasPreps) {
-            select.value = state.selectedPrepId ?? state.preps[0].id;
-        } else {
-            select.value = '';
-        }
-    });
-    renderMediaSummary();
-    refreshTiterRuns();
-}
-
-function renderMediaSummary() {
-    const board = document.getElementById('mediaSummary');
-    if (!board) return;
-    board.innerHTML = '';
-    const entries = state.preps
-        .filter((prep) => prep.media_change)
-        .sort((a, b) => new Date(b.media_change.created_at) - new Date(a.media_change.created_at));
-    if (!entries.length) {
-        board.innerHTML = '<p>No media changes recorded yet.</p>';
-        return;
-    }
-    entries.forEach((prep) => {
-        const div = document.createElement('div');
-        div.className = 'entry';
-        div.innerHTML = `
-            <strong>${prep.transfer_name}</strong>
-            <div>${prep.media_change.media_type ?? DEFAULT_MEDIA_TYPE}</div>
-            <div>${prep.media_change.volume_ml ?? '—'} mL · ${new Date(prep.media_change.created_at).toLocaleDateString()}</div>`;
-        board.appendChild(div);
-    });
-}
-
-function findSelectedPrep() {
-    const select = document.getElementById('harvestPrepSelect');
-    const prepId = parseInt(select?.value, 10) || state.selectedPrepId;
-    return state.preps.find((prep) => prep.id === prepId) || null;
-}
-
-function updateHarvestPreview() {
-    const preview = document.getElementById('harvestLabelPreview');
-    if (!preview) return;
-    const prep = findSelectedPrep();
-    if (!prep) {
-        preview.textContent = 'Select a prep to preview its harvest label.';
-        return;
-    }
-    const harvest = prep.harvest || {};
-    const dateInput = document.getElementById('harvestDate')?.value;
-    const labelDate = dateInput || harvest.harvest_date || isoToday();
-    const volumeInput = document.getElementById('harvestVolume')?.value;
-    const volume = volumeInput !== '' && volumeInput !== undefined
-        ? volumeInput
-        : (harvest.volume_ml ?? prep.media_change?.volume_ml ?? '—');
-    const cellLine = prep.cell_line_used || 'HEK293FT';
-    preview.textContent = `${prep.transfer_name} — ${cellLine} — ${labelDate}\nVolume: ${volume} mL`;
-}
-
-function parseCustomRatio(value) {
-    if (!value) return null;
-    const parts = value.split(',').map((part) => Number(part.trim()));
-    return parts.every((num) => !Number.isNaN(num) && num > 0) ? parts : null;
-}
-
-async function updateTransfectionMetrics() {
-    const vessel = document.getElementById('transfectionVessel')?.value;
-    if (!vessel) return;
-    const mode = document.getElementById('ratioMode').value;
-    const ratio = mode === 'custom' ? parseCustomRatio(document.getElementById('customRatio').value) : null;
-    const payload = { vessel_type: vessel };
-    if (ratio) payload.ratio = ratio;
-    const data = await fetchJSON(api.metrics.transfection, { method: 'POST', body: JSON.stringify(payload) });
-    const container = document.getElementById('transfectionResults');
-    container.innerHTML = `
-        <div class="metric-card"><span>Opti-MEM</span><strong>${data.opti_mem_ml} mL</strong></div>
-        <div class="metric-card"><span>X-tremeGENE 9</span><strong>${data.xtremegene_ul} µL</strong></div>
-        <div class="metric-card"><span>Total DNA</span><strong>${data.total_plasmid_ug} µg</strong></div>
-        <div class="metric-card"><span>Transfer Mass</span><strong>${data.transfer_mass_ug} µg</strong></div>
-        <div class="metric-card"><span>Packaging Mass</span><strong>${data.packaging_mass_ug} µg</strong></div>
-        <div class="metric-card"><span>Envelope Mass</span><strong>${data.envelope_mass_ug} µg</strong></div>`;
-}
-
-async function handlePrepSubmit(event) {
-    event.preventDefault();
-    const experimentId = parseInt(document.getElementById('prepExperimentSelect').value, 10);
-    if (!experimentId) {
-        alert('Select an experiment first.');
-        return;
-    }
-    const payload = {
-        transfer_name: document.getElementById('transferName').value,
-        transfer_concentration: parseFloat(document.getElementById('transferConcentration').value) || null,
-        plasmid_size_bp: parseFloat(document.getElementById('plasmidSize').value) || null,
-        cell_line_used: document.getElementById('productionCellLine').value || null
-    };
-    await fetchJSON(api.preps(experimentId), { method: 'POST', body: JSON.stringify(payload) });
-    alert('Lentivirus prep saved.');
-    event.target.reset();
-    await loadPreps(experimentId);
-}
-
-function openPrintWindow(content) {
-    const win = window.open('', '_blank');
-    win.document.write(`
-        <html><head><title>Labels</title>
-        <style>
-            body{font-family:'Inter',sans-serif;padding:32px;background:#f4f7ff;color:#17203a;}
-            .label{border:2px solid #5a8dee;border-radius:16px;padding:20px;margin-bottom:18px;}
-            h3{margin:0 0 8px;font-size:1.1rem;letter-spacing:0.08em;text-transform:uppercase;color:#3a6fdc;}
-            p{margin:4px 0;font-size:0.95rem;}
-        </style>
-        </head><body>${content}</body></html>`);
-    win.document.close();
-    win.focus();
-    win.print();
-}
-
-function handlePrintPrepLabel() {
-    const prep = state.preps.find((p) => p.id === state.selectedPrepId) || state.preps[0];
-    if (!prep) {
-        alert('Save a lentivirus prep before printing labels.');
-        return;
-    }
-    const today = new Date().toLocaleDateString();
-    const cellLine = prep.cell_line_used || 'HEK293FT';
-    const markup = `<div class="label"><h3>${prep.transfer_name}</h3><p>${cellLine}</p><p>${today}</p></div>`;
-    openPrintWindow(markup);
-}
-
-async function handleTransfectionSubmit(event) {
-    event.preventDefault();
-    const prepId = parseInt(document.getElementById('transfectionPrepSelect').value, 10);
-    if (!prepId) return alert('Select a lentivirus prep first.');
-    const mode = document.getElementById('ratioMode').value;
-    const ratio = mode === 'custom' ? parseCustomRatio(document.getElementById('customRatio').value) : null;
-    await fetchJSON(api.transfection(prepId), {
+    await fetchJSON(api.experiments, {
         method: 'POST',
-        body: JSON.stringify({
-            vessel_type: document.getElementById('transfectionVessel').value,
-            ratio_mode: mode,
-            ratio
-        })
+        body: JSON.stringify(payload)
     });
+    form.reset();
+    toggleNewExperimentPanel(false);
+    await loadExperiments();
+}
+
+async function openExperimentDetail(id) {
+    const data = await fetchJSON(api.experimentDetail(id));
+    state.activeExperiment = data.experiment;
+    state.selectedPrepId = (state.activeExperiment.preps[0] && state.activeExperiment.preps[0].id) || null;
+    state.selectedRunId = null;
+    showWorkflow();
+    renderExperimentDetail();
+}
+
+async function refreshActiveExperiment(selectPrepId) {
+    if (!state.activeExperiment) return;
+    const data = await fetchJSON(api.experimentDetail(state.activeExperiment.id));
+    state.activeExperiment = data.experiment;
+    if (selectPrepId) {
+        state.selectedPrepId = selectPrepId;
+    } else if (state.selectedPrepId && !state.activeExperiment.preps.some((prep) => prep.id === state.selectedPrepId)) {
+        state.selectedPrepId = state.activeExperiment.preps[0] ? state.activeExperiment.preps[0].id : null;
+    }
+    if (state.selectedRunId && !getCurrentRun()) {
+        state.selectedRunId = null;
+    }
+    renderExperimentDetail();
+}
+
+function renderExperimentDetail() {
+    if (!state.activeExperiment) return;
+    const experiment = state.activeExperiment;
+    document.getElementById('workflowExperimentName').textContent = experiment.name || 'Untitled experiment';
+    const metaParts = [
+        `${experiment.cell_line}`,
+        `Vessel: ${experiment.vessel_type}`,
+        `Cells: ${formatNumber(experiment.cells_to_seed)}`,
+        `Status: ${(experiment.status || 'active').toUpperCase()}`
+    ];
+    document.getElementById('workflowExperimentMeta').textContent = metaParts.join(' · ');
+
+    const toggleButton = document.getElementById('toggleExperimentStatus');
+    const status = experiment.status || 'active';
+    toggleButton.textContent = status === 'finished' ? 'Mark as active' : 'Mark as finished';
+
+    populateSeedingDetail(experiment);
+    renderPrepSection();
+    renderTransfectionSection();
+    renderMediaSection();
+    renderHarvestSection();
+    renderTiterSection();
+}
+
+function populateSeedingDetail(experiment) {
+    const form = document.getElementById('seedingDetailForm');
+    form.dataset.id = experiment.id;
+    form.elements['name'].value = experiment.name || '';
+    form.elements['cell_line'].value = experiment.cell_line;
+    form.elements['cells_to_seed'].value = experiment.cells_to_seed ? formatNumber(experiment.cells_to_seed) : '';
+    form.elements['vessel_type'].value = experiment.vessel_type;
+    form.elements['vessels_seeded'].value = experiment.vessels_seeded || 1;
+    form.elements['media_type'].value = experiment.media_type || APP_DEFAULT_MEDIA;
+    form.elements['seeding_date'].value = experiment.seeding_date || isoToday();
+
+    const meta = document.getElementById('seedingMeta');
+    meta.innerHTML = `
+        <dt>Created</dt><dd>${formatDateTime(experiment.created_at)}</dd>
+        <dt>Updated</dt><dd>${formatDateTime(experiment.updated_at)}</dd>
+        <dt>Finished</dt><dd>${formatDateTime(experiment.finished_at)}</dd>
+    `;
+}
+
+async function submitSeedingDetail(event) {
+    event.preventDefault();
+    const form = event.target;
+    const payload = Object.fromEntries(new FormData(form));
+    payload.cells_to_seed = parseNumericInput(payload.cells_to_seed);
+    payload.vessels_seeded = payload.vessels_seeded ? Number(payload.vessels_seeded) : 1;
+    payload.media_type = payload.media_type || APP_DEFAULT_MEDIA;
+    if (payload.cells_to_seed === null) {
+        alert('Enter the number of cells to seed.');
+        return;
+    }
+    await updateExperiment(state.activeExperiment.id, payload);
+    await refreshActiveExperiment();
+    alert('Experiment updated.');
+}
+
+function renderPrepSection() {
+    const experiment = state.activeExperiment;
+    const progress = document.getElementById('prepProgress');
+    const vesselsSeeded = experiment.vessels_seeded || 0;
+    const prepCount = experiment.preps.length;
+    progress.textContent = vesselsSeeded ? `${prepCount} of ${vesselsSeeded} preparations saved` : `${prepCount} preparations saved`;
+
+    const list = document.getElementById('prepList');
+    list.innerHTML = '';
+
+    if (!experiment.preps.length) {
+        const empty = document.createElement('li');
+        empty.className = 'callout muted';
+        empty.textContent = 'No preparations saved yet. Add a plasmid to begin.';
+        list.appendChild(empty);
+    } else {
+        experiment.preps.forEach((prep) => {
+            const item = document.createElement('li');
+            item.className = 'prep-item';
+            if (prep.id === state.selectedPrepId) {
+                item.classList.add('active');
+            }
+            const name = document.createElement('header');
+            const title = document.createElement('h3');
+            title.textContent = prep.transfer_name;
+            const meta = document.createElement('span');
+            meta.className = 'prep-meta';
+            const concText = prep.transfer_concentration ? `${prep.transfer_concentration} ng/µL` : 'Concentration NA';
+            meta.textContent = `${concText} · ${prep.plasmid_size_bp || 'bp NA'}`;
+            name.appendChild(title);
+            name.appendChild(meta);
+
+            const actions = document.createElement('div');
+            actions.className = 'actions';
+
+            const openBtn = document.createElement('button');
+            openBtn.type = 'button';
+            openBtn.className = 'ghost';
+            openBtn.textContent = 'Select';
+            openBtn.addEventListener('click', () => {
+                state.selectedPrepId = prep.id;
+                state.selectedRunId = null;
+                renderTransfectionSection();
+                renderMediaSection();
+                renderHarvestSection();
+                renderTiterSection();
+                renderPrepSection();
+            });
+            actions.appendChild(openBtn);
+
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'ghost';
+            editBtn.textContent = 'Edit';
+            editBtn.addEventListener('click', () => editPrep(prep));
+            actions.appendChild(editBtn);
+
+            name.appendChild(actions);
+            item.appendChild(name);
+            if (prep.transfection) {
+                const detail = document.createElement('div');
+                detail.className = 'metric';
+                detail.textContent = `Transfection saved · ${formatDateTime(prep.transfection.created_at)}`;
+                item.appendChild(detail);
+            }
+            list.appendChild(item);
+        });
+    }
+}
+
+async function savePrep(event) {
+    event.preventDefault();
+    if (!state.activeExperiment) return;
+    const form = event.target;
+    const payload = {
+        transfer_name: document.getElementById('transferName').value.trim(),
+        transfer_concentration: document.getElementById('transferConcentration').value ? Number(document.getElementById('transferConcentration').value) : null,
+        plasmid_size_bp: document.getElementById('plasmidSize').value ? Number(document.getElementById('plasmidSize').value) : null
+    };
+    if (!payload.transfer_name) {
+        alert('Enter a transfer plasmid name.');
+        return;
+    }
+    await fetchJSON(api.experimentPreps(state.activeExperiment.id), {
+        method: 'POST',
+        body: JSON.stringify(payload)
+    });
+    form.reset();
+    await refreshActiveExperiment();
+}
+
+async function editPrep(prep) {
+    const newName = prompt('Transfer plasmid name', prep.transfer_name || '');
+    if (newName === null) return;
+    const newConc = prompt('Concentration (ng/µL)', prep.transfer_concentration != null ? prep.transfer_concentration : '');
+    if (newConc === null) return;
+    const newSize = prompt('Plasmid size (bp)', prep.plasmid_size_bp != null ? prep.plasmid_size_bp : '');
+    const payload = {
+        transfer_name: newName.trim() || prep.transfer_name,
+        transfer_concentration: newConc ? Number(newConc) : null,
+        plasmid_size_bp: newSize ? Number(newSize) : null
+    };
+    await fetchJSON(api.prep(prep.id), {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+    });
+    await refreshActiveExperiment(prep.id);
+}
+
+function getSelectedPrep() {
+    if (!state.activeExperiment) return null;
+    return state.activeExperiment.preps.find((prep) => prep.id === state.selectedPrepId) || null;
+}
+
+function renderTransfectionSection() {
+    const prep = getSelectedPrep();
+    const summary = document.getElementById('transfectionSummary');
+    const form = document.getElementById('transfectionForm');
+    if (!prep) {
+        summary.textContent = 'Select a preparation to begin.';
+        summary.classList.remove('muted');
+        form.hidden = true;
+        return;
+    }
+    form.hidden = false;
+    document.getElementById('transfectionVessel').value = state.activeExperiment.vessel_type;
+    const transferInput = document.getElementById('transferConcentrationInput');
+    transferInput.value = prep.transfer_concentration != null ? prep.transfer_concentration : '';
+
+    const existing = prep.transfection;
+    if (existing) {
+        document.getElementById('ratioMode').value = existing.ratio_mode || 'optimal';
+        if (existing.ratio_mode === 'custom') {
+            document.getElementById('customRatio').disabled = false;
+            document.getElementById('customRatio').value = existing.ratio_display || '';
+        } else {
+            document.getElementById('customRatio').disabled = true;
+            document.getElementById('customRatio').value = '';
+        }
+        document.getElementById('packagingConcentrationInput').value = existing.packaging_concentration_ng_ul ?? '';
+        document.getElementById('envelopeConcentrationInput').value = existing.envelope_concentration_ng_ul ?? '';
+        renderTransfectionMetrics(existing);
+        summary.textContent = `Last saved ${formatDateTime(existing.created_at)}`;
+        summary.classList.add('muted');
+    } else {
+        document.getElementById('ratioMode').value = 'optimal';
+        document.getElementById('customRatio').value = '';
+        document.getElementById('customRatio').disabled = true;
+        document.getElementById('packagingConcentrationInput').value = '';
+        document.getElementById('envelopeConcentrationInput').value = '';
+        document.getElementById('transfectionMetrics').innerHTML = '';
+        summary.textContent = 'Scale reagents from the seeded vessel. Provide concentrations to compute pipetting volumes.';
+        summary.classList.remove('muted');
+        refreshTransfectionMetrics();
+    }
+}
+
+function renderTransfectionMetrics(metrics) {
+    const container = document.getElementById('transfectionMetrics');
+    if (!metrics) {
+        container.innerHTML = '';
+        return;
+    }
+    container.innerHTML = `
+        <div><strong>Opti-MEM</strong>${metrics.opti_mem_ml ?? '—'} mL</div>
+        <div><strong>X-tremeGENE 9</strong>${metrics.xtremegene_ul ?? '—'} µL</div>
+        <div><strong>Total DNA</strong>${metrics.total_plasmid_ug ?? '—'} µg (ratio ${metrics.ratio_display || `${metrics.transfer_ratio}:${metrics.packaging_ratio}:${metrics.envelope_ratio}`})</div>
+        <div><strong>Transfer mass</strong>${metrics.transfer_mass_ug ?? '—'} µg · ${metrics.transfer_volume_ul ? `${metrics.transfer_volume_ul} µL` : 'volume NA'}</div>
+        <div><strong>Packaging mass</strong>${metrics.packaging_mass_ug ?? '—'} µg · ${metrics.packaging_volume_ul ? `${metrics.packaging_volume_ul} µL` : 'volume NA'}</div>
+        <div><strong>Envelope mass</strong>${metrics.envelope_mass_ug ?? '—'} µg · ${metrics.envelope_volume_ul ? `${metrics.envelope_volume_ul} µL` : 'volume NA'}</div>
+    `;
+}
+
+function getRatioPayload() {
+    const ratioMode = document.getElementById('ratioMode').value;
+    if (ratioMode === 'custom') {
+        const text = document.getElementById('customRatio').value.trim();
+        if (!text) return null;
+        const parts = text.split(',').map((value) => Number(value.trim()));
+        if (parts.some((value) => Number.isNaN(value) || value <= 0)) return null;
+        return parts;
+    }
+    return null;
+}
+
+async function refreshTransfectionMetrics() {
+    const prep = getSelectedPrep();
+    if (!prep) return;
+    const ratioMode = document.getElementById('ratioMode').value;
+    const ratio = getRatioPayload();
+    const payload = {
+        vessel_type: state.activeExperiment.vessel_type,
+        ratio_mode: ratioMode
+    };
+    if (ratio) payload.ratio = ratio;
+    const transferConc = document.getElementById('transferConcentrationInput').value;
+    const packagingConc = document.getElementById('packagingConcentrationInput').value;
+    const envelopeConc = document.getElementById('envelopeConcentrationInput').value;
+    if (transferConc) payload.transfer_concentration_ng_ul = Number(transferConc);
+    if (packagingConc) payload.packaging_concentration_ng_ul = Number(packagingConc);
+    if (envelopeConc) payload.envelope_concentration_ng_ul = Number(envelopeConc);
+    try {
+        const metrics = await fetchJSON(api.metrics.transfection, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        renderTransfectionMetrics(metrics);
+    } catch (error) {
+        console.warn(error);
+    }
+}
+
+async function submitTransfection(event) {
+    event.preventDefault();
+    const prep = getSelectedPrep();
+    if (!prep) return;
+    const ratioMode = document.getElementById('ratioMode').value;
+    const ratio = getRatioPayload();
+    if (ratioMode === 'custom' && !ratio) {
+        alert('Enter a valid custom ratio using comma-separated numbers.');
+        return;
+    }
+    const payload = {
+        ratio_mode: ratioMode,
+        transfer_concentration_ng_ul: document.getElementById('transferConcentrationInput').value ? Number(document.getElementById('transferConcentrationInput').value) : null,
+        packaging_concentration_ng_ul: document.getElementById('packagingConcentrationInput').value ? Number(document.getElementById('packagingConcentrationInput').value) : null,
+        envelope_concentration_ng_ul: document.getElementById('envelopeConcentrationInput').value ? Number(document.getElementById('envelopeConcentrationInput').value) : null
+    };
+    if (ratio) payload.ratio = ratio;
+    await fetchJSON(api.transfection(prep.id), {
+        method: 'POST',
+        body: JSON.stringify(payload)
+    });
+    await refreshActiveExperiment(prep.id);
     alert('Transfection saved.');
-    if (state.currentExperimentId) {
-        await loadPreps(state.currentExperimentId);
+}
+
+function renderMediaSection() {
+    const prep = getSelectedPrep();
+    const form = document.getElementById('mediaForm');
+    const summary = document.getElementById('mediaSummary');
+    if (!prep) {
+        form.hidden = true;
+        summary.textContent = 'Select a preparation to log media changes.';
+        summary.classList.remove('muted');
+        return;
+    }
+    form.hidden = false;
+    summary.classList.add('muted');
+    const mediaChange = prep.media_change;
+    if (mediaChange) {
+        summary.textContent = `${mediaChange.media_type} · ${mediaChange.volume_ml} mL (${formatDateTime(mediaChange.created_at)})`;
+    } else {
+        summary.textContent = 'No media change logged yet.';
     }
 }
 
-async function handleMediaSubmit(event) {
+async function submitMediaChange(event) {
     event.preventDefault();
-    const prepId = parseInt(document.getElementById('mediaPrepSelect').value, 10);
-    if (!prepId) return alert('Select a prep first.');
-    const payload = {
-        media_type: document.getElementById('mediaTypeSelect').value,
-        volume_ml: parseFloat(document.getElementById('mediaVolume').value) || null
-    };
-    await fetchJSON(api.mediaChange(prepId), { method: 'POST', body: JSON.stringify(payload) });
-    alert('Media change saved.');
-    if (state.currentExperimentId) {
-        await loadPreps(state.currentExperimentId);
+    const prep = getSelectedPrep();
+    if (!prep) return;
+    const typeSelect = document.getElementById('mediaTypeSelect');
+    const selected = typeSelect.value;
+    let mediaType = selected;
+    if (selected === 'other') {
+        mediaType = document.getElementById('mediaOtherInput').value.trim();
+        if (!mediaType) {
+            alert('Enter a custom media description.');
+            return;
+        }
+    }
+    const volume = document.getElementById('mediaVolume').value ? Number(document.getElementById('mediaVolume').value) : null;
+    if (volume === null) {
+        alert('Enter the volume used.');
+        return;
+    }
+    await fetchJSON(api.mediaChange(prep.id), {
+        method: 'POST',
+        body: JSON.stringify({ media_type: mediaType, volume_ml: volume })
+    });
+    document.getElementById('mediaVolume').value = '';
+    await refreshActiveExperiment(prep.id);
+}
+
+function handleMediaTypeChange() {
+    const typeSelect = document.getElementById('mediaTypeSelect');
+    const otherGroup = document.getElementById('mediaOtherGroup');
+    otherGroup.hidden = typeSelect.value !== 'other';
+}
+
+function renderHarvestSection() {
+    const prep = getSelectedPrep();
+    const form = document.getElementById('harvestForm');
+    const summary = document.getElementById('harvestSummary');
+    const label = document.getElementById('harvestLabel');
+    const labelText = document.getElementById('harvestLabelText');
+    if (!prep) {
+        form.hidden = true;
+        summary.textContent = 'Select a preparation to record harvest details.';
+        summary.classList.remove('muted');
+        label.hidden = true;
+        return;
+    }
+    form.hidden = false;
+    summary.classList.add('muted');
+    const harvest = prep.harvest;
+    if (harvest) {
+        const text = `${prep.transfer_name} — ${harvest.harvest_date ? formatDate(harvest.harvest_date) : formatDateTime(harvest.created_at)} — ${harvest.volume_ml ?? 'volume NA'} mL`;
+        summary.textContent = text;
+        labelText.textContent = text;
+        label.hidden = false;
+    } else {
+        summary.textContent = 'No harvest recorded yet.';
+        label.hidden = true;
     }
 }
 
-async function handleHarvestSubmit(event) {
+async function submitHarvest(event) {
     event.preventDefault();
-    const prepId = parseInt(document.getElementById('harvestPrepSelect').value, 10);
-    if (!prepId) return alert('Select a prep first.');
-    const payload = {
-        harvest_date: document.getElementById('harvestDate').value || null,
-        volume_ml: parseFloat(document.getElementById('harvestVolume').value) || null
-    };
-    await fetchJSON(api.harvest(prepId), { method: 'POST', body: JSON.stringify(payload) });
-    alert('Harvest saved.');
-    if (state.currentExperimentId) {
-        await loadPreps(state.currentExperimentId);
+    const prep = getSelectedPrep();
+    if (!prep) return;
+    const date = document.getElementById('harvestDate').value;
+    const volume = document.getElementById('harvestVolume').value ? Number(document.getElementById('harvestVolume').value) : null;
+    if (volume === null) {
+        alert('Enter the harvest volume.');
+        return;
+    }
+    await fetchJSON(api.harvest(prep.id), {
+        method: 'POST',
+        body: JSON.stringify({ harvest_date: date || null, volume_ml: volume })
+    });
+    await refreshActiveExperiment(prep.id);
+}
+
+async function copyHarvestLabel() {
+    const text = document.getElementById('harvestLabelText').textContent;
+    try {
+        await navigator.clipboard.writeText(text);
+        alert('Label text copied to clipboard.');
+    } catch (error) {
+        alert('Unable to copy label text.');
     }
 }
 
-function handlePrintHarvestLabel() {
-    const prep = findSelectedPrep();
-    if (!prep) return alert('Select a prep first.');
-    const date = document.getElementById('harvestDate').value || new Date().toLocaleDateString();
-    const volume = document.getElementById('harvestVolume').value || prep.media_change?.volume_ml || '—';
-    const cellLine = prep.cell_line_used || 'HEK293FT';
-    const markup = `<div class="label"><h3>${prep.transfer_name}</h3><p>${cellLine}</p><p>${date}</p><p>Volume: ${volume} mL</p></div>`;
-    openPrintWindow(markup);
+function renderTiterSection() {
+    const prep = getSelectedPrep();
+    const setupForm = document.getElementById('titerSetupForm');
+    const runsList = document.getElementById('titerRunsList');
+    clearSampleDraft();
+    if (!prep) {
+        setupForm.hidden = true;
+        runsList.className = 'callout muted';
+        runsList.textContent = 'Select a preparation to configure titering.';
+        renderTiterResults();
+        return;
+    }
+    setupForm.hidden = false;
+    runsList.className = 'prep-list';
+    runsList.innerHTML = '';
+    if (!prep.titer_runs || !prep.titer_runs.length) {
+        const empty = document.createElement('div');
+        empty.className = 'callout muted';
+        empty.textContent = 'No titer runs saved yet.';
+        runsList.appendChild(empty);
+    } else {
+        prep.titer_runs
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .forEach((run) => {
+                const item = document.createElement('div');
+                item.className = 'prep-item';
+                if (run.id === state.selectedRunId) item.classList.add('active');
+                const header = document.createElement('header');
+                const title = document.createElement('h3');
+                title.textContent = `${run.cell_line} · ${run.vessel_type}`;
+                const meta = document.createElement('span');
+                meta.className = 'prep-meta';
+                meta.textContent = `${run.tests_count} tests · ${formatDateTime(run.created_at)}`;
+                header.appendChild(title);
+                header.appendChild(meta);
+                const actions = document.createElement('div');
+                actions.className = 'actions';
+                const open = document.createElement('button');
+                open.type = 'button';
+                open.className = 'ghost';
+                open.textContent = 'Open';
+                open.addEventListener('click', () => {
+                    state.selectedRunId = run.id;
+                    renderTiterResults();
+                    renderTiterSection();
+                });
+                actions.appendChild(open);
+                header.appendChild(actions);
+                item.appendChild(header);
+                runsList.appendChild(item);
+            });
+        if (!state.selectedRunId && prep.titer_runs[0]) {
+            state.selectedRunId = prep.titer_runs[0].id;
+        }
+    }
+    renderTiterResults();
 }
 
-function generateTiterInputs() {
-    const tests = parseInt(document.getElementById('titerConditions').value, 10) || 1;
-    const container = document.getElementById('titerInputContainer');
+function buildSampleRow(label, volume = '', selectionUsed = true) {
+    const row = document.createElement('div');
+    row.className = 'sample-row';
+    row.innerHTML = `
+        <header>${label}</header>
+        <label>Virus volume (µL)<input type="number" step="any" value="${volume}"></label>
+        <label>Selection applied <input type="checkbox" ${selectionUsed ? 'checked' : ''}></label>
+    `;
+    return row;
+}
+
+function buildResultRow(sample) {
+    const row = document.createElement('div');
+    row.className = 'sample-row';
+    row.dataset.sampleId = sample.id;
+    row.innerHTML = `
+        <header>${sample.label}</header>
+        <label>Virus volume (µL)<input type="number" step="any" value="${sample.virus_volume_ul}" disabled></label>
+        <label>Selection applied <input type="checkbox" ${sample.selection_used ? 'checked' : ''}></label>
+        <label>Cell concentration (cells/mL)<input type="text" value="${sample.cell_concentration != null ? sample.cell_concentration : ''}"></label>
+        <div class="metric">% survival: ${sample.measured_percent != null ? sample.measured_percent.toFixed(2) : '—'}</div>
+        <div class="metric">MOI: ${sample.moi != null ? sample.moi : '—'}</div>
+        <div class="metric">Titer (TU/mL): ${sample.titer_tu_ml != null ? sample.titer_tu_ml : '—'}</div>
+    `;
+    return row;
+}
+
+function clearSampleDraft() {
+    document.getElementById('titerSamples').innerHTML = '';
+    state.sampleDraftGenerated = false;
+}
+
+function handleSelectionReagentChange() {
+    const selection = document.getElementById('selectionReagent');
+    const other = document.getElementById('selectionOtherGroup');
+    other.hidden = selection.value !== 'Other';
+}
+
+function generateSampleDraft() {
+    const count = Number(document.getElementById('testsCount').value) || 1;
+    const container = document.getElementById('titerSamples');
     container.innerHTML = '';
-    const controls = document.createElement('div');
-    controls.className = 'titer-row';
-    controls.innerHTML = '<strong>Controls</strong><div>• No LV / No Selection</div><div>• No LV / + Selection</div>';
-    container.appendChild(controls);
-    for (let index = 1; index <= tests; index += 1) {
+    for (let i = 1; i <= count; i += 1) {
         const row = document.createElement('div');
-        row.className = 'titer-row';
-        row.dataset.type = 'test';
-        row.dataset.index = index;
+        row.className = 'sample-row';
+        row.dataset.role = 'test';
+        row.dataset.label = `Test ${i}`;
         row.innerHTML = `
-            <div class="titer-field"><label for="testVolume-${index}">Test ${index} Virus Volume (µL)</label>
-            <input type="number" step="any" id="testVolume-${index}" required></div>
-            <div class="titer-field selection-field">
-                <label><input type="checkbox" id="testSelection-${index}"> Selection Applied</label>
-            </div>`;
+            <header>Test ${i}</header>
+            <label>Virus volume (µL)<input type="number" step="any" required></label>
+            <label>Selection applied <input type="checkbox" checked></label>
+        `;
         container.appendChild(row);
     }
+    const posControl = document.createElement('div');
+    posControl.className = 'sample-row';
+    posControl.dataset.role = 'control-selection';
+    posControl.dataset.label = 'No LV + Selection';
+    posControl.innerHTML = `
+        <header>No LV + Selection</header>
+        <label>Virus volume (µL)<input type="number" step="any" value="0" disabled></label>
+        <label>Selection applied <input type="checkbox" checked></label>
+    `;
+    container.appendChild(posControl);
+
+    const negControl = document.createElement('div');
+    negControl.className = 'sample-row';
+    negControl.dataset.role = 'control-no-selection';
+    negControl.dataset.label = 'No LV − Selection';
+    negControl.innerHTML = `
+        <header>No LV − Selection</header>
+        <label>Virus volume (µL)<input type="number" step="any" value="0" disabled></label>
+        <label>Selection applied <input type="checkbox"></label>
+    `;
+    container.appendChild(negControl);
+    state.sampleDraftGenerated = true;
 }
 
-function splitSelection(selection) {
-    if (!selection) return { reagent: null, concentration: null };
-    const match = selection.match(/^(.*?)(\d.*)$/);
-    if (match) {
-        return { reagent: match[1].trim(), concentration: match[2].trim() };
-    }
-    return { reagent: selection.trim(), concentration: null };
-}
-
-async function handleTiterSetupSubmit(event) {
+async function submitTiterSetup(event) {
     event.preventDefault();
-    const prepId = parseInt(document.getElementById('titerPrepSelect').value, 10);
-    if (!prepId) return alert('Select a prep first.');
-    const cellsSeeded = parseNumericInput(document.getElementById('titerCellsSeeded').value);
-    if (cellsSeeded === null || Number.isNaN(cellsSeeded)) {
-        alert('Enter the number of cells seeded per well.');
+    const prep = getSelectedPrep();
+    if (!prep) return;
+    const samplesContainer = document.getElementById('titerSamples');
+    if (!state.sampleDraftGenerated || !samplesContainer.children.length) {
+        alert('Generate wells before saving the plan.');
         return;
     }
-    const selection = splitSelection(document.getElementById('titerSelection').value);
-    const rows = document.querySelectorAll('#titerInputContainer .titer-row[data-type="test"]');
-    const samples = Array.from(rows).map((row) => {
-        const index = row.dataset.index;
-        return {
-            label: `Test ${index}`,
-            virus_volume_ul: parseFloat(document.getElementById(`testVolume-${index}`).value) || 0,
-            selection_used: document.getElementById(`testSelection-${index}`).checked
-        };
+    const samples = [];
+    samplesContainer.querySelectorAll('.sample-row').forEach((row) => {
+        const label = row.dataset.label;
+        const volumeInput = row.querySelector('input[type="number"]');
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        samples.push({
+            label,
+            virus_volume_ul: Number(volumeInput.value) || 0,
+            selection_used: checkbox.checked
+        });
     });
-    samples.push({ label: 'Control - No Selection', virus_volume_ul: 0, selection_used: false });
-    samples.push({ label: 'Control - Selection', virus_volume_ul: 0, selection_used: true });
+    const selectionValue = document.getElementById('selectionReagent').value;
     const payload = {
-        cell_line: document.getElementById('titerCellLine').value || null,
-        cells_seeded: cellsSeeded,
+        cell_line: document.getElementById('titerCellLine').value.trim(),
+        cells_seeded: document.getElementById('titerCellsSeeded').value.trim(),
         vessel_type: document.getElementById('titerVessel').value,
-        selection_reagent: selection.reagent,
-        selection_concentration: selection.concentration,
-        tests_count: rows.length || 0,
-        samples
+        selection_reagent: selectionValue === 'Other' ? document.getElementById('selectionOtherInput').value.trim() : selectionValue,
+        selection_concentration: document.getElementById('selectionConcentration').value.trim(),
+        tests_count: Number(document.getElementById('testsCount').value) || 1,
+        notes: document.getElementById('titerNotes').value.trim(),
+        polybrene_ug_ml: document.getElementById('polybreneInput').value ? Number(document.getElementById('polybreneInput').value) : null,
+        samples,
+        measurement_media_ml: null,
+        control_cell_concentration: null
     };
-    await fetchJSON(api.titerRuns(prepId), { method: 'POST', body: JSON.stringify(payload) });
-    alert('Titer setup saved.');
-    document.getElementById('titerSetupForm').reset();
-    document.getElementById('titerInputContainer').innerHTML = '';
-    await refreshTiterRuns(prepId);
-}
-
-async function refreshTiterRuns(prepId = null) {
-    const select = document.getElementById('titerRunSelect');
-    if (!select) return;
-    const previousSelection = parseInt(select.value, 10);
-    const targetPrepId = prepId || parseInt(document.getElementById('titerPrepSelect').value, 10);
-    if (!targetPrepId) {
-        select.innerHTML = '';
-        state.titerRuns = [];
-        updateMoiChart();
-        document.getElementById('averageTiter').textContent = '—';
+    if (!payload.cell_line || !payload.cells_seeded) {
+        alert('Provide the cell line and number of cells seeded.');
         return;
     }
-    const data = await fetchJSON(api.titerRuns(targetPrepId));
-    state.titerRuns = data.titer_runs;
-    if (!state.titerRuns.length) {
-        select.innerHTML = '';
-        updateMoiChart();
-        document.getElementById('averageTiter').textContent = '—';
-        document.getElementById('titerResultsContainer').innerHTML = '<p>No titer runs yet.</p>';
-        return;
-    }
-    select.innerHTML = state.titerRuns
-        .map((run) => `<option value="${run.id}">Run #${run.id} · ${run.cell_line ?? run.vessel_type}</option>`)
-        .join('');
-    const preserved = state.titerRuns.find((run) => run.id === previousSelection) || state.titerRuns[0];
-    select.value = preserved.id;
-    renderTiterResultsForm();
-}
-
-function renderTiterResultsForm() {
-    const select = document.getElementById('titerRunSelect');
-    const runId = parseInt(select?.value, 10);
-    const run = state.titerRuns.find((item) => item.id === runId);
-    const container = document.getElementById('titerResultsContainer');
-    if (!run) {
-        container.innerHTML = '<p>Select a titer run to enter results.</p>';
-        updateMoiChart();
-        document.getElementById('averageTiter').textContent = '—';
-        return;
-    }
-    const rows = run.samples
-        .filter((sample) => !sample.label.startsWith('Control'))
-        .map((sample) => `
-            <div class="titer-row">
-                <div class="titer-field">
-                    <strong>${sample.label}</strong>
-                    <span>${sample.virus_volume_ul} µL</span>
-                </div>
-                <div class="titer-field">
-                    <label for="sample-${sample.id}">Measured % survival</label>
-                    <input type="number" step="any" id="sample-${sample.id}" data-sample-id="${sample.id}" value="${sample.measured_percent ?? ''}">
-                    <span class="field-hint">MOI: ${sample.moi ?? '—'} · Titer: ${sample.titer_tu_ml ?? '—'} TU/mL</span>
-                </div>
-            </div>`)
-        .join('');
-    container.innerHTML = rows || '<p>Run contains only controls.</p>';
-    updateMoiChart(run.samples);
-    updateAverageTiterDisplay(run.samples);
-}
-
-function updateMoiChart(samples = []) {
-    const ctx = document.getElementById('moiChart');
-    if (!ctx) return;
-    const filtered = samples.filter((sample) => sample.moi != null && sample.measured_percent != null);
-    const data = {
-        labels: filtered.map((sample) => sample.label),
-        datasets: [{
-            label: '% infected',
-            data: filtered.map((sample) => 100 - sample.measured_percent),
-            borderColor: '#3a6fdc',
-            backgroundColor: 'rgba(90, 141, 238, 0.25)',
-            pointBackgroundColor: '#5a8dee',
-            tension: 0.35,
-            fill: true
-        }]
-    };
-    if (state.moiChart) {
-        state.moiChart.data = data;
-        state.moiChart.update();
-        return;
-    }
-    state.moiChart = new Chart(ctx, {
-        type: 'line',
-        data,
-        options: {
-            scales: {
-                y: { title: { display: true, text: '% infected' } },
-                x: { title: { display: true, text: 'Condition' } }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label(context) {
-                            const sample = filtered[context.dataIndex];
-                            return `MOI ${sample?.moi ?? '—'} · % infected ${context.parsed.y.toFixed(2)}`;
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-function calculateAverageTiter(samples = []) {
-    const values = samples
-        .map((sample) => sample.titer_tu_ml)
-        .filter((value) => typeof value === 'number' && !Number.isNaN(value));
-    if (!values.length) return null;
-    return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function updateAverageTiterDisplay(samples = []) {
-    const average = calculateAverageTiter(samples);
-    document.getElementById('averageTiter').textContent = average ? `${Math.round(average).toLocaleString()} TU/mL` : '—';
-}
-
-async function handleTiterResultsSubmit(event) {
-    event.preventDefault();
-    const runId = parseInt(document.getElementById('titerRunSelect').value, 10);
-    if (!runId) return;
-    const controlPercent = parseFloat(document.getElementById('controlPercent').value) || 100;
-    const inputs = document.querySelectorAll('#titerResultsContainer input[data-sample-id]');
-    const samples = Array.from(inputs).map((input) => ({
-        id: parseInt(input.dataset.sampleId, 10),
-        measured_percent: parseFloat(input.value)
-    }));
-    const data = await fetchJSON(api.titerResults(runId), {
+    await fetchJSON(api.titerRuns(prep.id), {
         method: 'POST',
-        body: JSON.stringify({ control_percent: controlPercent, samples })
+        body: JSON.stringify(payload)
     });
-    updateAverageTiterDisplay(
-        state.titerRuns.find((run) => run.id === runId)?.samples ?? []
-    );
-    await refreshTiterRuns();
-    if (data.average_titer !== null && data.average_titer !== undefined) {
-        document.getElementById('averageTiter').textContent = `${Math.round(data.average_titer).toLocaleString()} TU/mL`;
+    document.getElementById('titerSetupForm').reset();
+    clearSampleDraft();
+    await refreshActiveExperiment(prep.id);
+}
+
+function getCurrentRun() {
+    const prep = getSelectedPrep();
+    if (!prep || !prep.titer_runs) return null;
+    return prep.titer_runs.find((run) => run.id === state.selectedRunId) || null;
+}
+
+function renderTiterResults() {
+    const run = getCurrentRun();
+    const panel = document.getElementById('titerResultsPanel');
+    const form = document.getElementById('titerResultsForm');
+    const samplesContainer = document.getElementById('resultsSamples');
+    const summary = document.getElementById('titerSummary');
+    const copyButton = document.getElementById('copyTiterSummary');
+    if (!run) {
+        panel.textContent = 'Select a titer run to record results.';
+        panel.classList.remove('muted');
+        form.hidden = true;
+        samplesContainer.innerHTML = '';
+        summary.textContent = '';
+        copyButton.hidden = true;
+        return;
+    }
+    panel.textContent = `Run created ${formatDateTime(run.created_at)} · ${run.cell_line}`;
+    panel.classList.add('muted');
+    form.hidden = false;
+    document.getElementById('resultsMeasurementVolume').value = run.measurement_media_ml ?? '';
+    document.getElementById('resultsControlConcentration').value = run.control_cell_concentration ?? '';
+    samplesContainer.innerHTML = '';
+    run.samples.forEach((sample) => {
+        const row = buildResultRow(sample);
+        samplesContainer.appendChild(row);
+    });
+    summary.textContent = '';
+    copyButton.hidden = true;
+}
+
+async function submitTiterResults(event) {
+    event.preventDefault();
+    const run = getCurrentRun();
+    if (!run) return;
+    const measurementVolume = document.getElementById('resultsMeasurementVolume').value;
+    const controlConc = document.getElementById('resultsControlConcentration').value;
+    const samplesPayload = [];
+    let missingConcentration = false;
+    document.querySelectorAll('#resultsSamples .sample-row').forEach((row) => {
+        const sampleId = Number(row.dataset.sampleId);
+        const concentrationInput = row.querySelector('input[type="text"]');
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        const value = concentrationInput.value.trim();
+        if (!value) missingConcentration = true;
+        samplesPayload.push({
+            id: sampleId,
+            cell_concentration: value,
+            selection_used: checkbox.checked
+        });
+    });
+    if (missingConcentration) {
+        if (!confirm('Some samples have blank concentrations. They will be skipped in calculations. Continue?')) {
+            return;
+        }
+    }
+    const payload = {
+        measurement_media_ml: measurementVolume ? Number(measurementVolume) : null,
+        control_cell_concentration: controlConc,
+        samples: samplesPayload
+    };
+    const response = await fetchJSON(api.titerResults(run.id), {
+        method: 'POST',
+        body: JSON.stringify(payload)
+    });
+    await refreshActiveExperiment(state.selectedPrepId);
+    const updatedRun = getCurrentRun();
+    if (updatedRun) {
+        const summary = document.getElementById('titerSummary');
+        if (response.average_titer != null) {
+            summary.textContent = `Average titer: ${response.average_titer.toLocaleString()} TU/mL`;
+            document.getElementById('copyTiterSummary').hidden = false;
+            document.getElementById('copyTiterSummary').dataset.summary = response.average_titer;
+        } else {
+            summary.textContent = 'Average titer unavailable. Provide concentrations for at least one sample.';
+            document.getElementById('copyTiterSummary').hidden = true;
+        }
     }
 }
 
-function copySummaryToClipboard() {
-    const runId = parseInt(document.getElementById('titerRunSelect').value, 10);
-    const run = state.titerRuns.find((item) => item.id === runId);
-    if (!run) return alert('Select a titer run first.');
-    const prep = state.preps.find((item) => item.id === run.prep_id);
-    const average = document.getElementById('averageTiter').textContent;
-    const summary = `${prep?.transfer_name ?? 'Lentivirus'} — ${new Date().toLocaleDateString()} — Lentivirus titer = ${average}`;
-    navigator.clipboard.writeText(summary).then(() => alert('Summary copied to clipboard.'));
+async function copyTiterSummary() {
+    const run = getCurrentRun();
+    const prep = getSelectedPrep();
+    const average = document.getElementById('copyTiterSummary').dataset.summary;
+    if (!run || !prep || !average) return;
+    const text = `${prep.transfer_name} — ${new Date().toLocaleDateString()} — Lentivirus titer = ${Number(average).toLocaleString()} TU/mL`;
+    try {
+        await navigator.clipboard.writeText(text);
+        alert('Titer summary copied to clipboard.');
+    } catch (error) {
+        alert('Unable to copy titer summary.');
+    }
+}
+
+async function renameExperiment() {
+    if (!state.activeExperiment) return;
+    const name = prompt('Experiment name', state.activeExperiment.name || '');
+    if (name === null) return;
+    await updateExperiment(state.activeExperiment.id, { name });
+    await refreshActiveExperiment();
+}
+
+async function toggleExperimentStatus() {
+    if (!state.activeExperiment) return;
+    const status = state.activeExperiment.status === 'finished' ? 'active' : 'finished';
+    await updateExperiment(state.activeExperiment.id, { status });
+    await refreshActiveExperiment();
+    await loadExperiments();
+}
+
+async function deleteCurrentExperiment() {
+    if (!state.activeExperiment) return;
+    if (!confirm('Delete this experiment and all associated records?')) return;
+    await deleteExperiment(state.activeExperiment.id);
+    await loadExperiments();
+    showDashboard();
 }
 
 function attachEventListeners() {
-    document.getElementById('seedingForm')?.addEventListener('submit', handleSeedingSubmit);
-    document.getElementById('resetSeeding')?.addEventListener('click', handleSeedingReset);
-    document.getElementById('refreshExperiments')?.addEventListener('click', loadExperiments);
-    document.getElementById('prepExperimentSelect')?.addEventListener('change', (event) => {
-        const experimentId = parseInt(event.target.value, 10);
-        if (experimentId) {
-            state.currentExperimentId = experimentId;
+    document.getElementById('createExperimentButton').addEventListener('click', () => toggleNewExperimentPanel(true));
+    document.getElementById('closeExperimentPanel').addEventListener('click', () => toggleNewExperimentPanel(false));
+    document.getElementById('cancelExperimentForm').addEventListener('click', () => toggleNewExperimentPanel(false));
+    document.getElementById('newExperimentForm').addEventListener('submit', createExperiment);
+    document.getElementById('backToDashboard').addEventListener('click', showDashboard);
+    document.getElementById('seedingDetailForm').addEventListener('submit', submitSeedingDetail);
+    document.getElementById('prepForm').addEventListener('submit', savePrep);
+    document.getElementById('ratioMode').addEventListener('change', (event) => {
+        const custom = document.getElementById('customRatio');
+        if (event.target.value === 'custom') {
+            custom.disabled = false;
+        } else {
+            custom.disabled = true;
+            custom.value = '';
         }
-        loadPreps(experimentId || null);
+        refreshTransfectionMetrics();
     });
-    document.getElementById('prepForm')?.addEventListener('submit', handlePrepSubmit);
-    document.getElementById('printPrepLabel')?.addEventListener('click', handlePrintPrepLabel);
-    document.getElementById('ratioMode')?.addEventListener('change', (event) => {
-        const isCustom = event.target.value === 'custom';
-        const customInput = document.getElementById('customRatio');
-        customInput.disabled = !isCustom;
-        if (!isCustom) {
-            customInput.value = '';
-        }
-        updateTransfectionMetrics();
-    });
-    document.getElementById('customRatio')?.addEventListener('input', () => {
+    document.getElementById('customRatio').addEventListener('input', () => {
         if (document.getElementById('ratioMode').value === 'custom') {
-            updateTransfectionMetrics();
+            refreshTransfectionMetrics();
         }
     });
-    document.getElementById('transfectionVessel')?.addEventListener('change', updateTransfectionMetrics);
-    document.getElementById('transfectionForm')?.addEventListener('submit', handleTransfectionSubmit);
-    document.getElementById('mediaForm')?.addEventListener('submit', handleMediaSubmit);
-    document.getElementById('harvestForm')?.addEventListener('submit', handleHarvestSubmit);
-    document.getElementById('harvestPrepSelect')?.addEventListener('change', (event) => {
-        state.selectedPrepId = parseInt(event.target.value, 10) || state.selectedPrepId;
-        updateHarvestPreview();
+    ['transferConcentrationInput', 'packagingConcentrationInput', 'envelopeConcentrationInput'].forEach((id) => {
+        document.getElementById(id).addEventListener('input', () => {
+            refreshTransfectionMetrics();
+        });
     });
-    document.getElementById('harvestDate')?.addEventListener('change', updateHarvestPreview);
-    document.getElementById('harvestVolume')?.addEventListener('input', updateHarvestPreview);
-    document.getElementById('printHarvestLabel')?.addEventListener('click', handlePrintHarvestLabel);
-    document.getElementById('generateTiterInputs')?.addEventListener('click', generateTiterInputs);
-    document.getElementById('titerSetupForm')?.addEventListener('submit', handleTiterSetupSubmit);
-    document.getElementById('titerPrepSelect')?.addEventListener('change', () => refreshTiterRuns());
-    document.getElementById('titerRunSelect')?.addEventListener('change', renderTiterResultsForm);
-    document.getElementById('titerResultsForm')?.addEventListener('submit', handleTiterResultsSubmit);
-    document.getElementById('copySummary')?.addEventListener('click', copySummaryToClipboard);
+    document.getElementById('transfectionForm').addEventListener('submit', submitTransfection);
+    document.getElementById('mediaForm').addEventListener('submit', submitMediaChange);
+    document.getElementById('mediaTypeSelect').addEventListener('change', handleMediaTypeChange);
+    document.getElementById('harvestForm').addEventListener('submit', submitHarvest);
+    document.getElementById('copyHarvestLabel').addEventListener('click', copyHarvestLabel);
+    document.getElementById('selectionReagent').addEventListener('change', handleSelectionReagentChange);
+    document.getElementById('buildSamples').addEventListener('click', generateSampleDraft);
+    document.getElementById('titerSetupForm').addEventListener('submit', submitTiterSetup);
+    document.getElementById('titerResultsForm').addEventListener('submit', submitTiterResults);
+    document.getElementById('copyTiterSummary').addEventListener('click', copyTiterSummary);
+    document.getElementById('renameExperiment').addEventListener('click', renameExperiment);
+    document.getElementById('toggleExperimentStatus').addEventListener('click', toggleExperimentStatus);
+    document.getElementById('deleteExperiment').addEventListener('click', deleteCurrentExperiment);
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-    initStepNavigation();
+window.addEventListener('DOMContentLoaded', async () => {
     attachEventListeners();
-    resetSeedingDefaults(true);
+    toggleNewExperimentPanel(false);
+    document.getElementById('experimentMedia').value = APP_DEFAULT_MEDIA;
+    document.getElementById('detailMedia').value = APP_DEFAULT_MEDIA;
+    document.getElementById('mediaTypeSelect').value = 'DMEM + 10% FBS';
+    handleMediaTypeChange();
+    handleSelectionReagentChange();
+    document.getElementById('harvestDate').value = isoToday();
     await loadExperiments();
-    updateTransfectionMetrics();
-    updateHarvestPreview();
 });

@@ -72,6 +72,9 @@ class Experiment(db.Model, TimestampMixin):
     __tablename__ = 'experiments'
 
     id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=False, default='Untitled Experiment')
+    status = db.Column(db.String(32), nullable=False, default='active')
+    finished_at = db.Column(db.DateTime)
     cell_line = db.Column(db.String(128), nullable=False)
     passage_number = db.Column(db.String(64))
     cell_concentration = db.Column(db.Float)
@@ -84,9 +87,12 @@ class Experiment(db.Model, TimestampMixin):
 
     preps = db.relationship('LentivirusPrep', backref='experiment', cascade='all, delete-orphan')
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_children: bool = False):
+        data = {
             'id': self.id,
+            'name': self.name,
+            'status': self.status,
+            'finished_at': self.finished_at.isoformat() if self.finished_at else None,
             'cell_line': self.cell_line,
             'passage_number': self.passage_number,
             'cell_concentration': self.cell_concentration,
@@ -96,9 +102,14 @@ class Experiment(db.Model, TimestampMixin):
             'media_type': self.media_type,
             'vessels_seeded': self.vessels_seeded,
             'seeding_date': self.seeding_date.isoformat() if self.seeding_date else None,
+            'prep_count': len(self.preps),
+            'completed_preps': sum(1 for prep in self.preps if prep.transfection is not None),
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
         }
+        if include_children:
+            data['preps'] = [prep.to_dict(include_children=True) for prep in self.preps]
+        return data
 
 
 class LentivirusPrep(db.Model, TimestampMixin):
@@ -116,20 +127,23 @@ class LentivirusPrep(db.Model, TimestampMixin):
     harvest = db.relationship('Harvest', uselist=False, backref='prep', cascade='all, delete-orphan')
     titer_runs = db.relationship('TiterRun', backref='prep', cascade='all, delete-orphan')
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_children: bool = False):
+        data = {
             'id': self.id,
             'experiment_id': self.experiment_id,
             'transfer_name': self.transfer_name,
             'transfer_concentration': self.transfer_concentration,
             'plasmid_size_bp': self.plasmid_size_bp,
-            'cell_line_used': self.cell_line_used,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
-            'transfection': self.transfection.to_dict() if self.transfection else None,
-            'media_change': self.media_change.to_dict() if self.media_change else None,
-            'harvest': self.harvest.to_dict() if self.harvest else None,
+            'vessel_type': self.experiment.vessel_type if self.experiment else None,
         }
+        if include_children:
+            data['transfection'] = self.transfection.to_dict() if self.transfection else None
+            data['media_change'] = self.media_change.to_dict() if self.media_change else None
+            data['harvest'] = self.harvest.to_dict() if self.harvest else None
+            data['titer_runs'] = [run.to_dict(include_samples=True) for run in self.titer_runs]
+        return data
 
 
 class Transfection(db.Model, TimestampMixin):
@@ -149,6 +163,13 @@ class Transfection(db.Model, TimestampMixin):
     packaging_mass_ug = db.Column(db.Float)
     envelope_mass_ug = db.Column(db.Float)
     ratio_mode = db.Column(db.String(32), default='optimal')
+    transfer_volume_ul = db.Column(db.Float)
+    packaging_volume_ul = db.Column(db.Float)
+    envelope_volume_ul = db.Column(db.Float)
+    transfer_concentration_ng_ul = db.Column(db.Float)
+    packaging_concentration_ng_ul = db.Column(db.Float)
+    envelope_concentration_ng_ul = db.Column(db.Float)
+    ratio_display = db.Column(db.String(64))
 
     def to_dict(self):
         return {
@@ -166,6 +187,13 @@ class Transfection(db.Model, TimestampMixin):
             'packaging_mass_ug': self.packaging_mass_ug,
             'envelope_mass_ug': self.envelope_mass_ug,
             'ratio_mode': self.ratio_mode,
+            'transfer_volume_ul': self.transfer_volume_ul,
+            'packaging_volume_ul': self.packaging_volume_ul,
+            'envelope_volume_ul': self.envelope_volume_ul,
+            'transfer_concentration_ng_ul': self.transfer_concentration_ng_ul,
+            'packaging_concentration_ng_ul': self.packaging_concentration_ng_ul,
+            'envelope_concentration_ng_ul': self.envelope_concentration_ng_ul,
+            'ratio_display': self.ratio_display,
             'created_at': self.created_at.isoformat(),
         }
 
@@ -218,6 +246,9 @@ class TiterRun(db.Model, TimestampMixin):
     selection_concentration = db.Column(db.String(64))
     tests_count = db.Column(db.Integer, default=1)
     notes = db.Column(db.Text)
+    polybrene_ug_ml = db.Column(db.Float)
+    measurement_media_ml = db.Column(db.Float)
+    control_cell_concentration = db.Column(db.Float)
 
     samples = db.relationship('TiterSample', backref='titer_run', cascade='all, delete-orphan')
 
@@ -232,6 +263,9 @@ class TiterRun(db.Model, TimestampMixin):
             'selection_concentration': self.selection_concentration,
             'tests_count': self.tests_count,
             'notes': self.notes,
+            'polybrene_ug_ml': self.polybrene_ug_ml,
+            'measurement_media_ml': self.measurement_media_ml,
+            'control_cell_concentration': self.control_cell_concentration,
             'created_at': self.created_at.isoformat(),
         }
         if include_samples:
@@ -250,6 +284,7 @@ class TiterSample(db.Model, TimestampMixin):
     measured_percent = db.Column(db.Float)
     moi = db.Column(db.Float)
     titer_tu_ml = db.Column(db.Float)
+    cell_concentration = db.Column(db.Float)
 
     def to_dict(self):
         return {
@@ -260,6 +295,7 @@ class TiterSample(db.Model, TimestampMixin):
             'measured_percent': self.measured_percent,
             'moi': self.moi,
             'titer_tu_ml': self.titer_tu_ml,
+            'cell_concentration': self.cell_concentration,
         }
 
 
@@ -359,6 +395,9 @@ def ensure_sqlite_schema():
         return
     existing_columns = {column['name'] for column in inspector.get_columns('experiments')}
     required_columns = {
+        'name': 'VARCHAR(128)',
+        'status': 'VARCHAR(32)',
+        'finished_at': 'DATETIME',
         'passage_number': 'VARCHAR(64)',
         'cell_concentration': 'FLOAT',
         'cells_to_seed': 'FLOAT',
@@ -380,6 +419,14 @@ def ensure_sqlite_schema():
             connection.execute(
                 text("UPDATE experiments SET media_type = 'DMEM + 10% FBS' WHERE media_type IS NULL")
             )
+        if 'name' in missing:
+            connection.execute(
+                text("UPDATE experiments SET name = COALESCE(name, 'Untitled Experiment')")
+            )
+        if 'status' in missing:
+            connection.execute(
+                text("UPDATE experiments SET status = COALESCE(status, 'active')")
+            )
         if 'vessels_seeded' in missing:
             connection.execute(
                 text('UPDATE experiments SET vessels_seeded = 1 WHERE vessels_seeded IS NULL')
@@ -400,6 +447,50 @@ def ensure_sqlite_schema():
                 ),
                 {'now': now},
             )
+    transfection_required = {
+        'transfer_volume_ul': 'FLOAT',
+        'packaging_volume_ul': 'FLOAT',
+        'envelope_volume_ul': 'FLOAT',
+        'transfer_concentration_ng_ul': 'FLOAT',
+        'packaging_concentration_ng_ul': 'FLOAT',
+        'envelope_concentration_ng_ul': 'FLOAT',
+        'ratio_display': 'VARCHAR(64)',
+    }
+    if 'transfections' in inspector.get_table_names():
+        existing = {column['name'] for column in inspector.get_columns('transfections')}
+        missing = {name: ddl for name, ddl in transfection_required.items() if name not in existing}
+        if missing:
+            with engine.begin() as connection:
+                for column_name, column_type in missing.items():
+                    connection.execute(
+                        text(f'ALTER TABLE transfections ADD COLUMN {column_name} {column_type}')
+                    )
+    titer_run_required = {
+        'polybrene_ug_ml': 'FLOAT',
+        'measurement_media_ml': 'FLOAT',
+        'control_cell_concentration': 'FLOAT',
+    }
+    if 'titer_runs' in inspector.get_table_names():
+        existing = {column['name'] for column in inspector.get_columns('titer_runs')}
+        missing = {name: ddl for name, ddl in titer_run_required.items() if name not in existing}
+        if missing:
+            with engine.begin() as connection:
+                for column_name, column_type in missing.items():
+                    connection.execute(
+                        text(f'ALTER TABLE titer_runs ADD COLUMN {column_name} {column_type}')
+                    )
+    titer_sample_required = {
+        'cell_concentration': 'FLOAT',
+    }
+    if 'titer_samples' in inspector.get_table_names():
+        existing = {column['name'] for column in inspector.get_columns('titer_samples')}
+        missing = {name: ddl for name, ddl in titer_sample_required.items() if name not in existing}
+        if missing:
+            with engine.begin() as connection:
+                for column_name, column_type in missing.items():
+                    connection.execute(
+                        text(f'ALTER TABLE titer_samples ADD COLUMN {column_name} {column_type}')
+                    )
 
 
 @app.route('/')
@@ -431,7 +522,18 @@ def experiments_endpoint():
             seeding_date = datetime.utcnow().date()
         if vessels_seeded in (None, ''):
             vessels_seeded = 1
+        name_value = (data.get('name') or '').strip()
+        if not name_value:
+            base_date = seeding_date.isoformat() if seeding_date else datetime.utcnow().date().isoformat()
+            name_value = f"{data['cell_line']} · {base_date}"
+        status = (data.get('status') or 'active').lower()
+        if status not in {'active', 'finished'}:
+            status = 'active'
+        finished_at = datetime.utcnow() if status == 'finished' else None
         experiment = Experiment(
+            name=name_value,
+            status=status,
+            finished_at=finished_at,
             cell_line=data['cell_line'],
             passage_number=data.get('passage_number'),
             cell_concentration=parse_shorthand_number(data.get('cell_concentration')),
@@ -455,9 +557,15 @@ def experiments_endpoint():
     return jsonify({'experiments': [exp.to_dict() for exp in experiments]})
 
 
-@app.route('/api/experiments/<int:experiment_id>', methods=['PUT'])
-def update_experiment(experiment_id):
+@app.route('/api/experiments/<int:experiment_id>', methods=['GET', 'PUT', 'DELETE'])
+def experiment_detail(experiment_id):
     experiment = Experiment.query.get_or_404(experiment_id)
+    if request.method == 'GET':
+        return jsonify({'experiment': experiment.to_dict(include_children=True)})
+    if request.method == 'DELETE':
+        db.session.delete(experiment)
+        db.session.commit()
+        return jsonify({'deleted': True})
     data = request.json
     updates = {
         'cell_line': data.get('cell_line'),
@@ -482,6 +590,18 @@ def update_experiment(experiment_id):
         if cells_to_seed is None:
             return jsonify({'error': 'cells_to_seed is required'}), 400
         updates['cells_to_seed'] = cells_to_seed
+    if 'name' in data:
+        name_value = (data.get('name') or '').strip()
+        if name_value:
+            updates['name'] = name_value
+    if 'status' in data:
+        status = (data.get('status') or '').lower()
+        if status in {'active', 'finished'}:
+            updates['status'] = status
+            if status == 'finished':
+                experiment.finished_at = experiment.finished_at or datetime.utcnow()
+            elif status == 'active':
+                experiment.finished_at = None
     for field, value in updates.items():
         if value is not None or field in data:
             setattr(experiment, field, value)
@@ -501,18 +621,34 @@ def prep_endpoint(experiment_id):
             transfer_name=data['transfer_name'],
             transfer_concentration=data.get('transfer_concentration'),
             plasmid_size_bp=data.get('plasmid_size_bp'),
-            cell_line_used=data.get('cell_line_used'),
         )
         db.session.add(prep)
         db.session.commit()
-        return jsonify({'prep': prep.to_dict()})
+        return jsonify({'prep': prep.to_dict(include_children=True)})
     preps = LentivirusPrep.query.filter_by(experiment_id=experiment_id).all()
-    return jsonify({'preps': [prep.to_dict() for prep in preps]})
+    return jsonify({'preps': [prep.to_dict(include_children=True) for prep in preps]})
+
+
+@app.route('/api/preps/<int:prep_id>', methods=['PUT', 'DELETE'])
+def update_prep(prep_id):
+    prep = LentivirusPrep.query.get_or_404(prep_id)
+    if request.method == 'DELETE':
+        db.session.delete(prep)
+        db.session.commit()
+        return jsonify({'deleted': True})
+    data = request.json
+    for field in ('transfer_name', 'transfer_concentration', 'plasmid_size_bp'):
+        if field in data:
+            setattr(prep, field, data.get(field))
+    db.session.commit()
+    return jsonify({'prep': prep.to_dict(include_children=True)})
 
 
 @app.route('/api/preps/<int:prep_id>/transfection', methods=['POST'])
 def transfection_endpoint(prep_id):
     prep = LentivirusPrep.query.get_or_404(prep_id)
+    experiment = prep.experiment
+    vessel_type = experiment.vessel_type if experiment else BASE_TRANSFECTION['vessel']
     data = request.json
     ratio_mode = data.get('ratio_mode', 'optimal')
     ratio = data.get('ratio')
@@ -520,22 +656,51 @@ def transfection_endpoint(prep_id):
         ratio = DEFAULT_MOLAR_RATIO
     else:
         ratio = tuple(float(x) for x in ratio)
-    scaling = calculate_transfection_scaling(data['vessel_type'], ratio)
-    transfection = Transfection(
-        prep=prep,
-        vessel_type=data['vessel_type'],
-        surface_area=SURFACE_AREAS[data['vessel_type']],
-        opti_mem_ml=scaling['opti_mem_ml'],
-        xtremegene_ul=scaling['xtremegene_ul'],
-        total_plasmid_ug=scaling['total_plasmid_ug'],
-        transfer_ratio=ratio[0],
-        packaging_ratio=ratio[1],
-        envelope_ratio=ratio[2],
-        transfer_mass_ug=scaling['transfer_mass_ug'],
-        packaging_mass_ug=scaling['packaging_mass_ug'],
-        envelope_mass_ug=scaling['envelope_mass_ug'],
-        ratio_mode=ratio_mode,
-    )
+
+    scaling = calculate_transfection_scaling(vessel_type, ratio)
+
+    def compute_volume(mass_ug, concentration_ng_ul):
+        if concentration_ng_ul in (None, 0):
+            return None
+        try:
+            concentration_value = float(concentration_ng_ul)
+        except (TypeError, ValueError):
+            return None
+        if concentration_value == 0:
+            return None
+        return round((mass_ug * 1000.0) / concentration_value, 3)
+
+    transfer_conc = data.get('transfer_concentration_ng_ul') or prep.transfer_concentration
+    packaging_conc = data.get('packaging_concentration_ng_ul')
+    envelope_conc = data.get('envelope_concentration_ng_ul')
+
+    transfer_volume = compute_volume(scaling['transfer_mass_ug'], transfer_conc)
+    packaging_volume = compute_volume(scaling['packaging_mass_ug'], packaging_conc)
+    envelope_volume = compute_volume(scaling['envelope_mass_ug'], envelope_conc)
+
+    ratio_display = f"{ratio[0]}:{ratio[1]}:{ratio[2]}"
+
+    transfection = prep.transfection or Transfection(prep=prep)
+    transfection.vessel_type = vessel_type
+    transfection.surface_area = SURFACE_AREAS.get(vessel_type, scaling['surface_ratio'] * SURFACE_AREAS[BASE_TRANSFECTION['vessel']])
+    transfection.opti_mem_ml = scaling['opti_mem_ml']
+    transfection.xtremegene_ul = scaling['xtremegene_ul']
+    transfection.total_plasmid_ug = scaling['total_plasmid_ug']
+    transfection.transfer_ratio = ratio[0]
+    transfection.packaging_ratio = ratio[1]
+    transfection.envelope_ratio = ratio[2]
+    transfection.transfer_mass_ug = scaling['transfer_mass_ug']
+    transfection.packaging_mass_ug = scaling['packaging_mass_ug']
+    transfection.envelope_mass_ug = scaling['envelope_mass_ug']
+    transfection.ratio_mode = ratio_mode
+    transfection.transfer_concentration_ng_ul = transfer_conc
+    transfection.packaging_concentration_ng_ul = packaging_conc
+    transfection.envelope_concentration_ng_ul = envelope_conc
+    transfection.transfer_volume_ul = transfer_volume
+    transfection.packaging_volume_ul = packaging_volume
+    transfection.envelope_volume_ul = envelope_volume
+    transfection.ratio_display = ratio_display
+
     db.session.add(transfection)
     db.session.commit()
     return jsonify({'transfection': transfection.to_dict()})
@@ -575,15 +740,21 @@ def titer_runs_endpoint(prep_id):
     LentivirusPrep.query.get_or_404(prep_id)
     if request.method == 'POST':
         data = request.json
+        cells_seeded = parse_shorthand_number(data.get('cells_seeded'))
+        if cells_seeded is None:
+            return jsonify({'error': 'cells_seeded is required'}), 400
         titer_run = TiterRun(
             prep_id=prep_id,
             cell_line=data['cell_line'],
-            cells_seeded=data['cells_seeded'],
+            cells_seeded=cells_seeded,
             vessel_type=data['vessel_type'],
             selection_reagent=data.get('selection_reagent'),
             selection_concentration=data.get('selection_concentration'),
             tests_count=data.get('tests_count', 1),
             notes=data.get('notes'),
+            polybrene_ug_ml=parse_shorthand_number(data.get('polybrene_ug_ml')),
+            measurement_media_ml=parse_shorthand_number(data.get('measurement_media_ml')),
+            control_cell_concentration=parse_shorthand_number(data.get('control_cell_concentration')),
         )
         db.session.add(titer_run)
         db.session.flush()
@@ -593,7 +764,7 @@ def titer_runs_endpoint(prep_id):
                 titer_run_id=titer_run.id,
                 label=sample['label'],
                 virus_volume_ul=sample['virus_volume_ul'],
-                selection_used=sample.get('selection_used', False),
+                selection_used=sample.get('selection_used', True),
             )
             db.session.add(sample_entry)
         db.session.commit()
@@ -606,16 +777,37 @@ def titer_runs_endpoint(prep_id):
 def titer_results_endpoint(run_id):
     run = TiterRun.query.get_or_404(run_id)
     data = request.json
-    control_percent = data.get('control_percent', 100)
+    measurement_media_ml = parse_shorthand_number(data.get('measurement_media_ml'))
+    control_concentration = parse_shorthand_number(data.get('control_cell_concentration'))
+    if measurement_media_ml is not None:
+        run.measurement_media_ml = measurement_media_ml
+    if control_concentration is not None:
+        run.control_cell_concentration = control_concentration
+    measurement_media = run.measurement_media_ml or 1.0
+    control_cells = None
+    if run.control_cell_concentration is not None:
+        control_cells = run.control_cell_concentration * measurement_media
     cells_at_transduction = run.cells_seeded
 
     updated_samples = []
     for sample_data in data.get('samples', []):
         sample = TiterSample.query.filter_by(id=sample_data['id'], titer_run_id=run.id).first_or_404()
-        measured_percent = sample_data.get('measured_percent')
-        if measured_percent is None:
+        if 'selection_used' in sample_data:
+            sample.selection_used = bool(sample_data['selection_used'])
+        cell_concentration = parse_shorthand_number(sample_data.get('cell_concentration'))
+        measured_percent = None
+        survival_fraction = None
+        if cell_concentration is not None and control_cells not in (None, 0):
+            sample.cell_concentration = cell_concentration
+            sample_cells = cell_concentration * measurement_media
+            survival_fraction = sample_cells / control_cells if control_cells else 0
+            measured_percent = max(0.0, survival_fraction * 100)
+        elif sample_data.get('measured_percent') is not None:
+            measured_percent = float(sample_data.get('measured_percent'))
+            survival_fraction = measured_percent / 100 if measured_percent is not None else None
+        if measured_percent is None or survival_fraction is None:
             continue
-        fraction_infected = max(0.0, min(1.0, 1 - (measured_percent / control_percent)))
+        fraction_infected = max(0.0, min(1.0, 1 - survival_fraction))
         moi = compute_moi(fraction_infected)
         titer = compute_titer(cells_at_transduction, moi, sample.virus_volume_ul)
         sample.measured_percent = measured_percent
@@ -648,6 +840,27 @@ def metrics_transfection():
     scaling = calculate_transfection_scaling(vessel_type, ratio_values)
     scaling['surface_area'] = SURFACE_AREAS[vessel_type]
     scaling['ratio'] = ratio_values
+    def compute_volume(mass_ug, concentration_ng_ul):
+        if concentration_ng_ul in (None, 0):
+            return None
+        try:
+            concentration_value = float(concentration_ng_ul)
+        except (TypeError, ValueError):
+            return None
+        if concentration_value == 0:
+            return None
+        return round((mass_ug * 1000.0) / concentration_value, 3)
+
+    scaling['transfer_volume_ul'] = compute_volume(
+        scaling['transfer_mass_ug'], data.get('transfer_concentration_ng_ul')
+    )
+    scaling['packaging_volume_ul'] = compute_volume(
+        scaling['packaging_mass_ug'], data.get('packaging_concentration_ng_ul')
+    )
+    scaling['envelope_volume_ul'] = compute_volume(
+        scaling['envelope_mass_ug'], data.get('envelope_concentration_ng_ul')
+    )
+    scaling['ratio_display'] = f"{ratio_values[0]}:{ratio_values[1]}:{ratio_values[2]}"
     return jsonify(scaling)
 
 
