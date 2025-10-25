@@ -19,6 +19,11 @@ let currentExperimentId = null;
 let selectedPrepForLabels = null;
 let moiChart;
 const DEFAULT_MEDIA_TYPE = 'DMEM + 10% FBS';
+const SHORTHAND_MULTIPLIERS = {
+    K: 1e3,
+    M: 1e6,
+    B: 1e9
+};
 
 function isoToday() {
     return new Date().toISOString().split('T')[0];
@@ -63,14 +68,43 @@ function formatDateTime(value) {
     return date.toLocaleString();
 }
 
+function parseNumericInput(rawValue) {
+    if (rawValue === undefined || rawValue === null) {
+        return null;
+    }
+    const trimmed = rawValue.toString().trim();
+    if (!trimmed) {
+        return null;
+    }
+    const normalized = trimmed.replace(/,/g, '');
+    const directValue = Number(normalized);
+    if (!Number.isNaN(directValue)) {
+        return directValue;
+    }
+    const shorthandMatch = normalized.match(/^(-?\d*\.?\d+)\s*([KMB])(?:[A-Z]*)?$/i);
+    if (shorthandMatch) {
+        const [, base, suffix] = shorthandMatch;
+        const multiplier = SHORTHAND_MULTIPLIERS[suffix.toUpperCase()];
+        return Number(base) * multiplier;
+    }
+    return null;
+}
+
 function updateSeedingVolume() {
     const vessel = document.getElementById('seedingVesselSelect').value;
-    const cells = parseFloat(document.querySelector('[name="cells_to_seed"]').value) || null;
+    const cellsInput = document.querySelector('[name="cells_to_seed"]').value;
+    const cells = parseNumericInput(cellsInput);
+    const hint = document.getElementById('seedingVolumeHelp');
     fetchJSON(api.metrics.seeding, {
         method: 'POST',
         body: JSON.stringify({ vessel_type: vessel, target_cells: cells })
     }).then(data => {
         document.getElementById('seedingVolume').value = data.seeding_volume_ml;
+        if (hint) {
+            hint.textContent = cells
+                ? 'Based on your target cells and the standard 750,000 cells/mL density.'
+                : 'Based on the base T175 volume scaled to the selected vessel surface area.';
+        }
     }).catch(console.error);
 }
 
@@ -115,7 +149,11 @@ function populateExperimentSelects() {
 function fillSeedingForm(exp) {
     const form = document.getElementById('seedingForm');
     form.dataset.id = exp.id;
-    form.cell_line.value = exp.cell_line;
+    if ([...form.cell_line.options].some(option => option.value === exp.cell_line)) {
+        form.cell_line.value = exp.cell_line;
+    } else {
+        form.cell_line.value = form.cell_line.options[0]?.value ?? '';
+    }
     form.passage_number.value = exp.passage_number ?? '';
     form.cell_concentration.value = exp.cell_concentration ?? '';
     form.cells_to_seed.value = exp.cells_to_seed ?? '';
@@ -133,18 +171,26 @@ async function submitSeedingForm(event) {
     if (!payload.media_type) {
         payload.media_type = DEFAULT_MEDIA_TYPE;
     }
-    payload.cell_concentration = payload.cell_concentration ? parseFloat(payload.cell_concentration) : null;
-    payload.cells_to_seed = payload.cells_to_seed ? parseFloat(payload.cells_to_seed) : null;
-    payload.seeding_volume_ml = payload.seeding_volume_ml ? parseFloat(payload.seeding_volume_ml) : null;
+    if (!payload.seeding_date) {
+        payload.seeding_date = isoToday();
+    }
+    payload.cell_concentration = parseNumericInput(payload.cell_concentration);
+    payload.cells_to_seed = parseNumericInput(payload.cells_to_seed);
+    payload.seeding_volume_ml = parseNumericInput(payload.seeding_volume_ml);
     payload.vessels_seeded = payload.vessels_seeded ? parseInt(payload.vessels_seeded, 10) : null;
     const method = form.dataset.id ? 'PUT' : 'POST';
     const url = form.dataset.id ? `${api.experiments}/${form.dataset.id}` : api.experiments;
-    await fetchJSON(url, { method, body: JSON.stringify(payload) });
-    form.reset();
-    delete form.dataset.id;
-    resetSeedingDefaults();
-    updateSeedingVolume();
-    await loadExperiments();
+    try {
+        await fetchJSON(url, { method, body: JSON.stringify(payload) });
+        form.reset();
+        delete form.dataset.id;
+        resetSeedingDefaults();
+        updateSeedingVolume();
+        await loadExperiments();
+    } catch (error) {
+        console.error(error);
+        alert(`Unable to save experiment: ${error.message}`);
+    }
 }
 
 async function loadPreps(experimentId) {
@@ -494,8 +540,9 @@ function updateMoiChart(samples = []) {
         datasets: [{
             label: '% Infected',
             data: filtered.map(s => 100 - s.measured_percent),
-            borderColor: '#4f46e5',
-            backgroundColor: 'rgba(79,70,229,0.18)',
+            borderColor: '#219ebc',
+            backgroundColor: 'rgba(142, 202, 230, 0.35)',
+            pointBackgroundColor: '#219ebc',
             tension: 0.3,
             fill: true
         }]

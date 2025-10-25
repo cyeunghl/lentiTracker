@@ -1,38 +1,88 @@
 :root {
-    --brand-primary: #4f46e5;
-    --brand-primary-dark: #4338ca;
+    --brand-primary: #8ecae6;
+    --brand-primary-dark: #6caee0;
+    --brand-secondary: #edf6fb;
+    --brand-accent: #219ebc;
+    --text-on-pastel: #0b3954;
 }
 
 body {
-    background-color: #f5f7fb;
+    background-color: var(--brand-secondary);
 }
 
 .bg-primary {
     background-color: var(--brand-primary) !important;
+    color: var(--text-on-pastel) !important;
+}
+
+.bg-secondary {
+    background-color: #cfe4f5 !important;
+    color: var(--text-on-pastel) !important;
 }
 
 .btn-primary {
-    background-color: var(--brand-primary) !important;
-    border-color: var(--brand-primary) !important;
+    background-color: var(--brand-accent) !important;
+    border-color: var(--brand-accent) !important;
+    color: #fff !important;
 }
 
-.btn-primary:hover {
-    background-color: var(--brand-primary-dark) !important;
-    border-color: var(--brand-primary-dark) !important;
+.btn-primary:hover,
+.btn-primary:focus {
+    background-color: #1a7f99 !important;
+    border-color: #1a7f99 !important;
+}
+
+.btn-outline-secondary {
+    color: var(--brand-accent);
+    border-color: var(--brand-accent);
+}
+
+.btn-outline-secondary:hover,
+.btn-outline-secondary:focus {
+    background-color: rgba(142, 202, 230, 0.2);
+    border-color: var(--brand-accent);
+    color: var(--text-on-pastel);
 }
 
 .badge.text-bg-primary,
 .text-bg-primary {
-    background-color: var(--brand-primary) !important;
+    background-color: var(--brand-accent) !important;
 }
 
-.navbar-dark .navbar-brand,
-.navbar-dark .navbar-nav .nav-link {
-    color: #f8f9ff !important;
+.pastel-navbar {
+    background: linear-gradient(90deg, rgba(142, 202, 230, 0.95), rgba(168, 218, 220, 0.95));
+    color: var(--text-on-pastel);
+}
+
+.pastel-navbar .navbar-brand,
+.pastel-navbar .nav-link {
+    color: var(--text-on-pastel) !important;
+    font-weight: 600;
+}
+
+.pastel-navbar .btn {
+    background-color: #fff;
+    color: var(--brand-accent);
+    border-color: transparent;
+}
+
+.pastel-navbar .btn:hover {
+    background-color: var(--brand-accent);
+    color: #fff;
 }
 
 .card {
     border: none;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.card-header {
+    border-bottom: none;
+}
+
+.card-body {
+    background-color: #ffffff;
 }
 
 .table tbody tr {
@@ -43,15 +93,15 @@ body {
     min-height: 140px;
     background: repeating-linear-gradient(
         -45deg,
-        #f8f9fa,
-        #f8f9fa 10px,
-        #ffffff 10px,
-        #ffffff 20px
+        rgba(142, 202, 230, 0.2),
+        rgba(142, 202, 230, 0.2) 12px,
+        rgba(255, 255, 255, 0.9) 12px,
+        rgba(255, 255, 255, 0.9) 24px
     );
 }
 
 #labelPreview .label-item {
-    border: 1px dashed #6c757d;
+    border: 1px dashed rgba(11, 57, 84, 0.4);
     padding: 12px;
     margin-bottom: 8px;
     background-color: rgba(255,255,255,0.9);

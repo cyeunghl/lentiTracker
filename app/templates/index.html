@@ -8,24 +8,27 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+<nav class="navbar navbar-expand-lg pastel-navbar mb-4">
     <div class="container-fluid">
         <span class="navbar-brand">Lentivirus Production Tracker</span>
-        <button class="btn btn-light" id="refreshExperiments">Refresh Records</button>
+        <button class="btn" id="refreshExperiments">Refresh Records</button>
     </div>
 </nav>
 <div class="container-fluid pb-5">
     <div class="row">
         <div class="col-lg-4 mb-4">
             <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
+                <div class="card-header bg-primary">
                     <h5 class="mb-0">1. Cell Seeding (Day 0)</h5>
                 </div>
                 <div class="card-body">
                     <form id="seedingForm" class="needs-validation" novalidate>
                         <div class="mb-3">
                             <label class="form-label">Cell Line</label>
-                            <input type="text" name="cell_line" class="form-control" required>
+                            <select name="cell_line" class="form-select" required>
+                                <option value="HEK293T">HEK293T</option>
+                                <option value="HEK293FT">HEK293FT</option>
+                            </select>
                         </div>
                         <div class="row g-2">
                             <div class="col">
@@ -34,7 +37,7 @@
                             </div>
                             <div class="col">
                                 <label class="form-label">Cell Concentration (cells/mL)</label>
-                                <input type="number" step="any" name="cell_concentration" class="form-control">
+                                <input type="text" name="cell_concentration" class="form-control" placeholder="e.g. 750K or 1e6">
                             </div>
                         </div>
                         <div class="row g-2 mt-2">
@@ -55,6 +58,7 @@
                             <div class="col">
                                 <label class="form-label">Calculated Seeding Volume (mL)</label>
                                 <input type="number" step="any" name="seeding_volume_ml" class="form-control" id="seedingVolume" readonly>
+                                <div class="form-text" id="seedingVolumeHelp">Auto-calculated from standard 750,000 cells/mL density or vessel surface area scaling.</div>
                             </div>
                             <div class="col">
                                 <label class="form-label">Media Type</label>
@@ -80,7 +84,7 @@
         </div>
         <div class="col-lg-8 mb-4">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                <div class="card-header bg-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Experiment Records</h5>
                     <span class="small">Double-click a row to load into the seeding form.</span>
                 </div>
@@ -109,7 +113,7 @@
     <div class="row">
         <div class="col-lg-6 mb-4">
             <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
+                <div class="card-header bg-primary">
                     <h5 class="mb-0">2. Lentivirus Preparation Setup</h5>
                 </div>
                 <div class="card-body">
@@ -156,7 +160,7 @@
         </div>
         <div class="col-lg-6 mb-4">
             <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
+                <div class="card-header bg-primary">
                     <h5 class="mb-0">3. Transfection (Day 1 PM)</h5>
                 </div>
                 <div class="card-body">
@@ -201,7 +205,7 @@
     <div class="row">
         <div class="col-lg-4 mb-4">
             <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
+                <div class="card-header bg-primary">
                     <h5 class="mb-0">4. Media Change</h5>
                 </div>
                 <div class="card-body">
@@ -231,7 +235,7 @@
         </div>
         <div class="col-lg-4 mb-4">
             <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
+                <div class="card-header bg-primary">
                     <h5 class="mb-0">5. Viral Harvest</h5>
                 </div>
                 <div class="card-body">
