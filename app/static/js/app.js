@@ -1589,15 +1589,7 @@ function copyToClipboard(button, text) {
     if (!navigator.clipboard) {
         return;
     }
-    navigator.clipboard.writeText(text).then(() => {
-        const original = button.textContent;
-        button.textContent = 'Copied!';
-        button.disabled = true;
-        setTimeout(() => {
-            button.textContent = original;
-            button.disabled = false;
-        }, 1500);
-    }).catch(() => {
+    navigator.clipboard.writeText(text).catch(() => {
         // Ignore clipboard errors silently
     });
 }
