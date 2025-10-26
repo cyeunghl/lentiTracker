@@ -916,23 +916,6 @@ function copyTransfectionLabels() {
     }
 }
 
-function copyTransfectionLabelTable() {
-    const button = document.getElementById('copyTransfectionTable');
-    const selected = getSelectedPrepIds();
-    if (!selected.length || !button) return;
-    const cellLine = state.activeExperiment?.cell_line || '';
-    const rows = selected
-        .map((id) => {
-            const prep = getPrepById(id);
-            if (!prep) return null;
-            return `${prep.transfer_name}\t${cellLine}\t${isoToday()}`;
-        })
-        .filter(Boolean);
-    if (!rows.length) return;
-    const header = 'Transfer name\tCell line\tDate';
-    copyToClipboard(button, [header, ...rows].join('\n'));
-}
-
 async function saveTransfection() {
     const selected = getSelectedPrepIds();
     if (!selected.length) return;
@@ -1163,8 +1146,11 @@ function buildHarvestEntry(prep) {
     copyButton.className = 'ghost small';
     copyButton.textContent = 'Copy label';
     copyButton.addEventListener('click', () => {
-        const volumeText = draft.volume || prep.harvest?.volume_ml || prep.media_change?.volume_ml || '';
-        const text = `${prep.transfer_name} — ${dateInput.value || isoToday()} — ${volumeText} mL`;
+        const volumeRaw = draft.volume || prep.harvest?.volume_ml || prep.media_change?.volume_ml;
+        const volumePart = volumeRaw !== undefined && volumeRaw !== null && String(volumeRaw).trim() !== ''
+            ? ` — ${String(volumeRaw).trim()} mL`
+            : '';
+        const text = `${prep.transfer_name} — ${dateInput.value || isoToday()}${volumePart}`;
         copyToClipboard(copyButton, text);
     });
 
@@ -1208,23 +1194,27 @@ function renderHarvestSection() {
     });
 }
 
-function copyHarvestLabelTable() {
-    const button = document.getElementById('copyHarvestTable');
+function copyHarvestLabels() {
+    const button = document.getElementById('copyHarvestLabels');
     const selected = getSelectedPrepIds();
     if (!selected.length || !button) return;
-    const rows = selected
+    const text = selected
         .map((id) => {
             const prep = getPrepById(id);
-            const draft = state.harvestDraft.get(id);
             if (!prep) return null;
+            const draft = state.harvestDraft.get(id);
             const date = (draft && draft.date) || prep.harvest?.harvest_date || isoToday();
-            const volume = (draft && draft.volume) || prep.harvest?.volume_ml || prep.media_change?.volume_ml || '';
-            return `${prep.transfer_name}\t${date}\t${volume} mL`;
+            const volumeRaw = (draft && draft.volume) || prep.harvest?.volume_ml || prep.media_change?.volume_ml;
+            const trimmedVolume = volumeRaw !== undefined && volumeRaw !== null && String(volumeRaw).trim() !== ''
+                ? `${String(volumeRaw).trim()} mL`
+                : null;
+            return trimmedVolume ? `${prep.transfer_name} — ${date} — ${trimmedVolume}` : `${prep.transfer_name} — ${date}`;
         })
-        .filter(Boolean);
-    if (!rows.length) return;
-    const header = 'Transfer name\tDate\tVolume (mL)';
-    copyToClipboard(button, [header, ...rows].join('\n'));
+        .filter(Boolean)
+        .join('\n');
+    if (text) {
+        copyToClipboard(button, text);
+    }
 }
 
 function setTiterPlanCopy(text) {
@@ -1905,11 +1895,10 @@ function attachEventListeners() {
     document.getElementById('clearSelectedPreps').addEventListener('click', handleClearSelectedPreps);
     document.getElementById('applyTransfectionBulk').addEventListener('click', applyTransfectionBulk);
     document.getElementById('copyTransfectionLabels').addEventListener('click', copyTransfectionLabels);
-    document.getElementById('copyTransfectionTable').addEventListener('click', copyTransfectionLabelTable);
     document.getElementById('saveTransfection').addEventListener('click', saveTransfection);
     document.getElementById('applyMediaBulk').addEventListener('click', applyMediaBulk);
     document.getElementById('saveMediaChanges').addEventListener('click', saveMediaChanges);
-    document.getElementById('copyHarvestTable').addEventListener('click', copyHarvestLabelTable);
+    document.getElementById('copyHarvestLabels').addEventListener('click', copyHarvestLabels);
     document.getElementById('saveHarvests').addEventListener('click', saveHarvests);
     document.getElementById('generateTiterSamples').addEventListener('click', generateTiterSamples);
     document.getElementById('saveTiterSetup').addEventListener('click', saveTiterSetup);
