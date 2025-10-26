@@ -87,11 +87,17 @@ async function fetchJSON(url, options = {}) {
     if (!response.ok) {
         let message = 'Request failed';
         try {
-            const payload = await response.json();
-            message = payload.error || payload.details || message;
-        } catch (error) {
             const text = await response.text();
-            if (text) message = text;
+            if (text) {
+                try {
+                    const payload = JSON.parse(text);
+                    message = payload.error || payload.details || message;
+                } catch (parseError) {
+                    message = text;
+                }
+            }
+        } catch (error) {
+            // ignore body parsing errors and fall back to default message
         }
         throw new Error(message);
     }
