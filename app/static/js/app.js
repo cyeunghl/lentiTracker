@@ -898,6 +898,23 @@ function applyTransfectionBulk() {
     });
 }
 
+function copyTransfectionLabels() {
+    const button = document.getElementById('copyTransfectionLabels');
+    const selected = getSelectedPrepIds();
+    if (!selected.length || !button) return;
+    const text = selected
+        .map((id) => {
+            const prep = getPrepById(id);
+            if (!prep) return null;
+            return `${prep.transfer_name} — ${state.activeExperiment.cell_line} — ${isoToday()}`;
+        })
+        .filter(Boolean)
+        .join('\n');
+    if (text) {
+        copyToClipboard(button, text);
+    }
+}
+
 async function saveTransfection() {
     const selected = getSelectedPrepIds();
     if (!selected.length) return;
@@ -1108,6 +1125,21 @@ function buildHarvestEntry(prep) {
         draft.volume = volumeInput.value;
     });
 
+    const fillButton = document.createElement('button');
+    fillButton.type = 'button';
+    fillButton.className = 'ghost small';
+    fillButton.textContent = 'Use media volume';
+    const mediaVolume = prep.media_change && prep.media_change.volume_ml != null ? prep.media_change.volume_ml : null;
+    if (mediaVolume == null) {
+        fillButton.disabled = true;
+        fillButton.title = 'No media volume recorded';
+    }
+    fillButton.addEventListener('click', () => {
+        if (mediaVolume == null) return;
+        draft.volume = String(mediaVolume);
+        volumeInput.value = String(mediaVolume);
+    });
+
     const copyButton = document.createElement('button');
     copyButton.type = 'button';
     copyButton.className = 'ghost small';
@@ -1118,7 +1150,7 @@ function buildHarvestEntry(prep) {
         copyToClipboard(copyButton, text);
     });
 
-    controls.append(dateInput, volumeInput, copyButton);
+    controls.append(dateInput, volumeInput, fillButton, copyButton);
     wrapper.appendChild(controls);
 
     if (prep.harvest) {
@@ -1156,6 +1188,25 @@ function renderHarvestSection() {
     selected.forEach((id) => {
         entries.appendChild(buildHarvestEntry(getPrepById(id)));
     });
+}
+
+function copyHarvestLabelTable() {
+    const button = document.getElementById('copyHarvestTable');
+    const selected = getSelectedPrepIds();
+    if (!selected.length || !button) return;
+    const rows = selected
+        .map((id) => {
+            const prep = getPrepById(id);
+            const draft = state.harvestDraft.get(id);
+            if (!prep) return null;
+            const date = (draft && draft.date) || prep.harvest?.harvest_date || isoToday();
+            const volume = (draft && draft.volume) || prep.harvest?.volume_ml || prep.media_change?.volume_ml || '';
+            return `${prep.transfer_name}\t${date}\t${volume} mL`;
+        })
+        .filter(Boolean);
+    if (!rows.length) return;
+    const header = 'Transfer name\tDate\tVolume (mL)';
+    copyToClipboard(button, [header, ...rows].join('\n'));
 }
 
 async function saveHarvests() {
@@ -1794,9 +1845,11 @@ function attachEventListeners() {
     document.getElementById('selectAllPreps').addEventListener('click', handleSelectAllPreps);
     document.getElementById('clearSelectedPreps').addEventListener('click', handleClearSelectedPreps);
     document.getElementById('applyTransfectionBulk').addEventListener('click', applyTransfectionBulk);
+    document.getElementById('copyTransfectionLabels').addEventListener('click', copyTransfectionLabels);
     document.getElementById('saveTransfection').addEventListener('click', saveTransfection);
     document.getElementById('applyMediaBulk').addEventListener('click', applyMediaBulk);
     document.getElementById('saveMediaChanges').addEventListener('click', saveMediaChanges);
+    document.getElementById('copyHarvestTable').addEventListener('click', copyHarvestLabelTable);
     document.getElementById('saveHarvests').addEventListener('click', saveHarvests);
     document.getElementById('generateTiterSamples').addEventListener('click', generateTiterSamples);
     document.getElementById('saveTiterSetup').addEventListener('click', saveTiterSetup);

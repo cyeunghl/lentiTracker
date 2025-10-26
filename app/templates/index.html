@@ -15,7 +15,7 @@
         <span class="brand-mark">LT</span>
         <div>
             <h1>Lentivirus Production Tracker</h1>
-            <p class="brand-subtitle">Soft pastel workspace for planning, producing, and titering lentivirus.</p>
+            <p class="brand-subtitle">Workspace for planning, producing, and titering lentivirus.</p>
         </div>
     </div>
     <div class="top-actions">
@@ -75,7 +75,7 @@
         <section class="experiment-section">
             <header class="section-header">
                 <h2>Active experiments</h2>
-                <p>Cards show seeding details and prep progress. Mark experiments finished once viral harvest and titering are complete.</p>
+                <p>Active experiments for lentivirus production. Mark experiments finished once viral harvest and titering are complete.</p>
             </header>
             <div id="activeExperiments" class="card-grid"></div>
         </section>
@@ -235,6 +235,7 @@
                         </table>
                     </div>
                     <div id="transfectionActions" class="form-actions" hidden>
+                        <button type="button" class="ghost" id="copyTransfectionLabels">Copy all labels</button>
                         <button type="button" class="primary" id="saveTransfection">Save transfection</button>
                     </div>
                     <div id="transfectionError" class="callout danger" hidden></div>
@@ -282,6 +283,7 @@
                     <div id="harvestPlaceholder" class="callout muted">Select preparations with media changes to log harvests.</div>
                     <div id="harvestEntries" class="stack" hidden></div>
                     <div id="harvestActions" class="form-actions" hidden>
+                        <button type="button" class="ghost" id="copyHarvestTable">Copy labels table</button>
                         <button type="button" class="primary" id="saveHarvests">Save harvest</button>
                     </div>
                     <div id="harvestError" class="callout danger" hidden></div>
