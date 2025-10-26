@@ -462,43 +462,42 @@ def ensure_sqlite_schema():
         'updated_at': 'DATETIME',
     }
     missing = {name: ddl for name, ddl in required_columns.items() if name not in existing_columns}
-    if not missing:
-        return
-    with engine.begin() as connection:
-        for column_name, column_type in missing.items():
-            connection.execute(text(f'ALTER TABLE experiments ADD COLUMN {column_name} {column_type}'))
-        if 'media_type' in missing:
-            connection.execute(
-                text("UPDATE experiments SET media_type = 'DMEM + 10% FBS' WHERE media_type IS NULL")
-            )
-        if 'name' in missing:
-            connection.execute(
-                text("UPDATE experiments SET name = COALESCE(name, 'Untitled Experiment')")
-            )
-        if 'status' in missing:
-            connection.execute(
-                text("UPDATE experiments SET status = COALESCE(status, 'active')")
-            )
-        if 'vessels_seeded' in missing:
-            connection.execute(
-                text('UPDATE experiments SET vessels_seeded = 1 WHERE vessels_seeded IS NULL')
-            )
-        if 'seeding_date' in missing:
-            today = datetime.utcnow().date().isoformat()
-            connection.execute(
-                text('UPDATE experiments SET seeding_date = COALESCE(seeding_date, :today)'),
-                {'today': today},
-            )
-        if 'created_at' in missing or 'updated_at' in missing:
-            now = datetime.utcnow().isoformat()
-            connection.execute(
-                text(
-                    "UPDATE experiments "
-                    "SET created_at = COALESCE(created_at, :now), "
-                    "updated_at = COALESCE(updated_at, :now)"
-                ),
-                {'now': now},
-            )
+    if missing:
+        with engine.begin() as connection:
+            for column_name, column_type in missing.items():
+                connection.execute(text(f'ALTER TABLE experiments ADD COLUMN {column_name} {column_type}'))
+            if 'media_type' in missing:
+                connection.execute(
+                    text("UPDATE experiments SET media_type = 'DMEM + 10% FBS' WHERE media_type IS NULL")
+                )
+            if 'name' in missing:
+                connection.execute(
+                    text("UPDATE experiments SET name = COALESCE(name, 'Untitled Experiment')")
+                )
+            if 'status' in missing:
+                connection.execute(
+                    text("UPDATE experiments SET status = COALESCE(status, 'active')")
+                )
+            if 'vessels_seeded' in missing:
+                connection.execute(
+                    text('UPDATE experiments SET vessels_seeded = 1 WHERE vessels_seeded IS NULL')
+                )
+            if 'seeding_date' in missing:
+                today = datetime.utcnow().date().isoformat()
+                connection.execute(
+                    text('UPDATE experiments SET seeding_date = COALESCE(seeding_date, :today)'),
+                    {'today': today},
+                )
+            if 'created_at' in missing or 'updated_at' in missing:
+                now = datetime.utcnow().isoformat()
+                connection.execute(
+                    text(
+                        "UPDATE experiments "
+                        "SET created_at = COALESCE(created_at, :now), "
+                        "updated_at = COALESCE(updated_at, :now)"
+                    ),
+                    {'now': now},
+                )
     transfection_required = {
         'transfer_volume_ul': 'FLOAT',
         'packaging_volume_ul': 'FLOAT',
