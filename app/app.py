@@ -109,6 +109,9 @@ class Experiment(db.Model, TimestampMixin):
             'plates_allocated': plates_allocated,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
+            'titer_summaries': [
+                summary for summary in (prep.latest_titer_summary() for prep in self.preps) if summary
+            ],
         }
         if include_children:
             data['preps'] = [prep.to_dict(include_children=True) for prep in self.preps]
@@ -131,6 +134,22 @@ class LentivirusPrep(db.Model, TimestampMixin):
     harvest = db.relationship('Harvest', uselist=False, backref='prep', cascade='all, delete-orphan')
     titer_runs = db.relationship('TiterRun', backref='prep', cascade='all, delete-orphan')
 
+    def latest_titer_summary(self):
+        if not self.titer_runs:
+            return None
+        latest_run = max(self.titer_runs, key=lambda run: run.created_at)
+        samples = [sample for sample in latest_run.samples if sample.titer_tu_ml is not None]
+        if not samples:
+            return None
+        average = round_titer_average(sum(sample.titer_tu_ml for sample in samples) / len(samples))
+        return {
+            'prep_id': self.id,
+            'transfer_name': self.transfer_name,
+            'average_titer': average,
+            'run_id': latest_run.id,
+            'run_created_at': latest_run.created_at.isoformat(),
+        }
+
     def to_dict(self, include_children: bool = False):
         status = {
             'logged': True,
@@ -150,6 +169,7 @@ class LentivirusPrep(db.Model, TimestampMixin):
             'vessel_type': self.experiment.vessel_type if self.experiment else None,
             'plate_count': self.plate_count,
             'status': status,
+            'latest_titer': self.latest_titer_summary(),
         }
         if include_children:
             data['transfection'] = self.transfection.to_dict() if self.transfection else None

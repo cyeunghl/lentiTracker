@@ -26,7 +26,7 @@ const state = {
     titerSamples: [],
     titerPrepInputs: new Map(),
     titerForm: {
-        cellLine: 'HEK293T',
+        cellLine: '',
         vesselType: '6-well',
         selectionReagent: 'Puromycin',
         selectionOther: '',
@@ -35,6 +35,8 @@ const state = {
         testsCount: 1,
         notes: ''
     },
+    titerSaveScope: 'all',
+    titerSaveTarget: null,
     currentRunId: null
 };
 
@@ -59,6 +61,13 @@ function formatNumber(value) {
     if (number >= 1e6) return `${(number / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
     if (number >= 1e3) return `${(number / 1e3).toFixed(1).replace(/\.0$/, '')}K`;
     return number.toLocaleString();
+}
+
+function formatWholeNumber(value) {
+    if (value === null || value === undefined) return null;
+    const number = Number(value);
+    if (Number.isNaN(number) || !Number.isFinite(number)) return null;
+    return Math.round(number).toLocaleString();
 }
 
 function formatDate(value) {
@@ -158,6 +167,22 @@ function createExperimentCard(experiment) {
         </dl>
         <div class="prep-progress">${plateSummary} · ${transfected}/${prepCount} transfected</div>
     `;
+
+    if (status === 'finished' && Array.isArray(experiment.titer_summaries) && experiment.titer_summaries.length) {
+        const summaryList = document.createElement('ul');
+        summaryList.className = 'titer-summary-list';
+        experiment.titer_summaries.forEach((entry) => {
+            const item = document.createElement('li');
+            const name = document.createElement('strong');
+            name.textContent = entry.transfer_name;
+            const value = document.createElement('span');
+            const formatted = formatWholeNumber(entry.average_titer);
+            value.textContent = formatted ? `${formatted} TU/mL` : 'No titer recorded';
+            item.append(name, value);
+            summaryList.appendChild(item);
+        });
+        card.appendChild(summaryList);
+    }
 
     const actions = document.createElement('div');
     actions.className = 'card-actions';
@@ -630,9 +655,10 @@ function initializeHarvestDraft(prepId) {
     if (!prep) return;
     const harvest = prep.harvest || {};
     const media = prep.media_change || {};
+    const volumeValue = harvest.volume_ml ?? media.volume_ml;
     state.harvestDraft.set(prepId, {
         date: harvest.harvest_date || isoToday(),
-        volume: harvest.volume_ml ?? media.volume_ml ?? ''
+        volume: volumeValue != null ? String(volumeValue) : ''
     });
 }
 
@@ -1142,7 +1168,7 @@ async function saveHarvests() {
                 method: 'POST',
                 body: JSON.stringify({
                     harvest_date: draft.date || null,
-                    volume_ml: draft.volume
+                    volume_ml: draft.volume === '' ? null : Number(draft.volume)
                 })
             });
         }
@@ -1228,6 +1254,52 @@ function renderTiterSamples() {
 
         container.appendChild(row);
     });
+}
+
+function renderTiterSaveControls(selectedIds) {
+    const scopeSelect = document.getElementById('titerSaveScope');
+    const targetSelect = document.getElementById('titerSaveTarget');
+    if (!scopeSelect || !targetSelect) return;
+
+    if (!selectedIds.length) {
+        scopeSelect.value = 'all';
+        scopeSelect.disabled = true;
+        state.titerSaveScope = 'all';
+        state.titerSaveTarget = null;
+        targetSelect.hidden = true;
+        targetSelect.innerHTML = '';
+        return;
+    }
+
+    scopeSelect.disabled = false;
+    scopeSelect.value = state.titerSaveScope;
+
+    if (state.titerSaveScope === 'single') {
+        targetSelect.hidden = false;
+        targetSelect.innerHTML = '';
+        selectedIds.forEach((prepId) => {
+            const prep = getPrepById(prepId);
+            if (!prep) return;
+            const option = document.createElement('option');
+            option.value = String(prepId);
+            option.textContent = prep.transfer_name;
+            targetSelect.appendChild(option);
+        });
+        if (!selectedIds.includes(state.titerSaveTarget)) {
+            state.titerSaveTarget = selectedIds.length ? selectedIds[0] : null;
+        }
+        if (state.titerSaveTarget != null) {
+            targetSelect.value = String(state.titerSaveTarget);
+        }
+        targetSelect.disabled = selectedIds.length === 0;
+        if (!targetSelect.options.length) {
+            targetSelect.hidden = true;
+        }
+    } else {
+        targetSelect.hidden = true;
+        targetSelect.innerHTML = '';
+        state.titerSaveTarget = null;
+    }
 }
 
 function renderTiterPrepTable() {
@@ -1318,6 +1390,7 @@ function renderTiterSetupSection() {
         tableWrapper.hidden = true;
         sampleBuilder.hidden = true;
         actions.hidden = true;
+        renderTiterSaveControls([]);
         renderTiterRunsList();
         return;
     }
@@ -1329,26 +1402,33 @@ function renderTiterSetupSection() {
     actions.hidden = false;
 
     const formState = state.titerForm;
-    if (!formState.cellLine) {
-        formState.cellLine = state.activeExperiment.cell_line || '';
-    }
-    form.querySelector('#titerCellLine').value = formState.cellLine;
+    const cellLineInput = form.querySelector('#titerCellLine');
+    cellLineInput.value = formState.cellLine || '';
     form.querySelector('#titerVessel').value = formState.vesselType;
-    form.querySelector('#selectionReagent').value = ['Puromycin', 'Blasticidin', 'Hygromycin'].includes(formState.selectionReagent) ? formState.selectionReagent : 'Other';
+    const selectionReagentSelect = form.querySelector('#selectionReagent');
     const selectionOtherGroup = document.getElementById('selectionOtherGroup');
     const selectionOtherInput = document.getElementById('selectionOtherInput');
-    if (!['Puromycin', 'Blasticidin', 'Hygromycin'].includes(formState.selectionReagent)) {
-        selectionOtherGroup.hidden = false;
-        selectionOtherInput.value = formState.selectionOther || formState.selectionReagent;
-    } else {
+    const predefinedReagents = ['Puromycin', 'Blasticidin', 'Hygromycin'];
+    if (predefinedReagents.includes(formState.selectionReagent)) {
+        selectionReagentSelect.value = formState.selectionReagent;
         selectionOtherGroup.hidden = true;
         selectionOtherInput.value = '';
+        selectionOtherInput.disabled = true;
+        formState.selectionOther = '';
+    } else {
+        selectionReagentSelect.value = 'Other';
+        selectionOtherGroup.hidden = false;
+        selectionOtherInput.disabled = false;
+        const customValue = formState.selectionOther || formState.selectionReagent || '';
+        selectionOtherInput.value = customValue;
+        formState.selectionOther = customValue;
     }
     form.querySelector('#selectionConcentration').value = formState.selectionConcentration;
     form.querySelector('#polybreneInput').value = formState.polybrene;
     form.querySelector('#testsCount').value = formState.testsCount;
     form.querySelector('#titerNotes').value = formState.notes;
 
+    renderTiterSaveControls(selected);
     renderTiterPrepTable();
     renderTiterSamples();
     renderTiterRunsList();
@@ -1365,6 +1445,19 @@ function generateTiterSamples() {
 async function saveTiterSetup() {
     const selected = getSelectedPrepIds();
     if (!selected.length) return;
+    const errorBanner = document.getElementById('titerSetupError');
+    errorBanner.hidden = true;
+    errorBanner.textContent = '';
+
+    let targets = selected;
+    if (state.titerSaveScope === 'single') {
+        if (state.titerSaveTarget == null || !selected.includes(state.titerSaveTarget)) {
+            errorBanner.textContent = 'Choose a preparation to save the titer plan.';
+            errorBanner.hidden = false;
+            return;
+        }
+        targets = [state.titerSaveTarget];
+    }
     const formState = state.titerForm;
     formState.cellLine = document.getElementById('titerCellLine').value.trim() || formState.cellLine;
     formState.vesselType = document.getElementById('titerVessel').value;
@@ -1372,31 +1465,33 @@ async function saveTiterSetup() {
     if (selectionValue === 'Other') {
         const otherValue = document.getElementById('selectionOtherInput').value.trim();
         if (!otherValue) {
-            document.getElementById('titerSetupError').textContent = 'Enter a selection reagent.';
-            document.getElementById('titerSetupError').hidden = false;
+            errorBanner.textContent = 'Enter a selection reagent.';
+            errorBanner.hidden = false;
             return;
         }
         formState.selectionReagent = otherValue;
+        formState.selectionOther = otherValue;
     } else {
         formState.selectionReagent = selectionValue;
+        formState.selectionOther = '';
     }
     formState.selectionConcentration = document.getElementById('selectionConcentration').value;
     formState.polybrene = document.getElementById('polybreneInput').value;
     formState.notes = document.getElementById('titerNotes').value;
 
     if (!formState.cellLine) {
-        document.getElementById('titerSetupError').textContent = 'Cell line is required.';
-        document.getElementById('titerSetupError').hidden = false;
+        errorBanner.textContent = 'Cell line is required.';
+        errorBanner.hidden = false;
         return;
     }
     if (!state.titerSamples.length) {
-        document.getElementById('titerSetupError').textContent = 'Generate wells before saving the plan.';
-        document.getElementById('titerSetupError').hidden = false;
+        errorBanner.textContent = 'Generate wells before saving the plan.';
+        errorBanner.hidden = false;
         return;
     }
 
     try {
-        for (const prepId of selected) {
+        for (const prepId of targets) {
             const draft = state.titerPrepInputs.get(prepId) || { cellsSeeded: '' };
             const cellsSeeded = parseNumericInput(draft.cellsSeeded);
             if (cellsSeeded === null) throw new Error('Enter cells seeded for each preparation.');
@@ -1424,11 +1519,10 @@ async function saveTiterSetup() {
         }
         state.titerSamples = [];
         document.getElementById('titerSampleBuilder').hidden = true;
-        await refreshActiveExperiment(selected[0]);
+        await refreshActiveExperiment(targets[0]);
     } catch (error) {
-        const banner = document.getElementById('titerSetupError');
-        banner.textContent = error.message;
-        banner.hidden = false;
+        errorBanner.textContent = error.message;
+        errorBanner.hidden = false;
     }
 }
 
@@ -1706,6 +1800,17 @@ function attachEventListeners() {
     document.getElementById('saveHarvests').addEventListener('click', saveHarvests);
     document.getElementById('generateTiterSamples').addEventListener('click', generateTiterSamples);
     document.getElementById('saveTiterSetup').addEventListener('click', saveTiterSetup);
+    document.getElementById('titerSaveScope').addEventListener('change', (event) => {
+        state.titerSaveScope = event.target.value;
+        if (state.titerSaveScope !== 'single') {
+            state.titerSaveTarget = null;
+        }
+        renderTiterSaveControls(getSelectedPrepIds());
+    });
+    document.getElementById('titerSaveTarget').addEventListener('change', (event) => {
+        const value = event.target.value;
+        state.titerSaveTarget = value === '' ? null : Number(value);
+    });
     document.getElementById('titerCellLine').addEventListener('input', (event) => {
         state.titerForm.cellLine = event.target.value;
     });
@@ -1713,11 +1818,17 @@ function attachEventListeners() {
         state.titerForm.vesselType = event.target.value;
     });
     document.getElementById('selectionReagent').addEventListener('change', (event) => {
+        const otherGroup = document.getElementById('selectionOtherGroup');
+        const otherInput = document.getElementById('selectionOtherInput');
         if (event.target.value === 'Other') {
-            document.getElementById('selectionOtherGroup').hidden = false;
+            otherGroup.hidden = false;
+            otherInput.disabled = false;
             state.titerForm.selectionReagent = state.titerForm.selectionOther || '';
         } else {
-            document.getElementById('selectionOtherGroup').hidden = true;
+            otherGroup.hidden = true;
+            otherInput.disabled = true;
+            otherInput.value = '';
+            state.titerForm.selectionOther = '';
             state.titerForm.selectionReagent = event.target.value;
         }
     });

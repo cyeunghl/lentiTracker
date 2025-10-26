@@ -289,6 +289,11 @@ button.danger {
     gap: 24px;
 }
 
+.workflow-columns #prepCard,
+.workflow-columns #transfectionCard {
+    grid-column: 1 / -1;
+}
+
 .card {
     background: var(--card-bg);
     border-radius: var(--radius-lg);
@@ -568,8 +573,55 @@ button.small.danger {
 }
 
 .status-pill.complete {
-    background: rgba(80, 134, 194, 0.2);
-    color: var(--primary-dark);
+    background: rgba(142, 163, 102, 0.25);
+    color: #4f5f2f;
+}
+
+.scope-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    color: #1d3051;
+}
+
+.scope-controls label {
+    display: contents;
+}
+
+.scope-controls select {
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(110, 167, 216, 0.35);
+    background: rgba(255, 255, 255, 0.9);
+    font-family: inherit;
+    font-weight: 500;
+}
+
+.titer-summary-list {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.titer-summary-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(110, 167, 216, 0.08);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    color: #405370;
+}
+
+.titer-summary-list li span {
+    font-weight: 600;
+    color: #2f4663;
 }
 
 .bulk-controls {

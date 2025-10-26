@@ -320,12 +320,12 @@
                                 <option value="Puromycin">Puromycin</option>
                                 <option value="Blasticidin">Blasticidin</option>
                                 <option value="Hygromycin">Hygromycin</option>
-                                <option value="Other">Others…</option>
+                                <option value="Other">Other…</option>
                             </select>
                         </div>
                         <div class="form-group" id="selectionOtherGroup" hidden>
                             <label for="selectionOtherInput">Custom selection reagent</label>
-                            <input id="selectionOtherInput" type="text" placeholder="Enter reagent name">
+                            <input id="selectionOtherInput" type="text" placeholder="Enter reagent name" disabled>
                         </div>
                         <div class="form-group">
                             <label for="selectionConcentration">Selection concentration (µg/mL)</label>
@@ -360,6 +360,14 @@
                         <div id="titerSamples"></div>
                     </div>
                     <div id="titerSetupActions" class="form-actions" hidden>
+                        <div class="scope-controls">
+                            <label for="titerSaveScope">Save plan for</label>
+                            <select id="titerSaveScope">
+                                <option value="all">All selected</option>
+                                <option value="single">Single preparation</option>
+                            </select>
+                            <select id="titerSaveTarget" hidden aria-label="Preparation to apply plan to"></select>
+                        </div>
                         <button type="button" class="ghost" id="generateTiterSamples">Generate wells</button>
                         <button type="button" class="primary" id="saveTiterSetup">Save titer plan</button>
                     </div>
