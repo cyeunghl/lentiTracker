@@ -1,6 +1,6 @@
 import math
 from datetime import datetime
-<<<<<<< HEAD
+
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -8,7 +8,7 @@ from flask_migrate import Migrate
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///lenti_tracker.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-=======
+
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
@@ -32,7 +32,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'check_same_thread': False,
     }
 }
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -44,11 +44,11 @@ SURFACE_AREAS = {
     'T75': 75.0,
     'T25': 25.0,
     'T12.5': 12.5,
-<<<<<<< HEAD
-=======
+
+
     '15 cm dish': 145.0,
     '10 cm dish': 55.0,
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
     '6-well': 58.0,  # total for the plate
     '12-well': 38.0,
     '24-well': 21.0,
@@ -85,12 +85,12 @@ class Experiment(db.Model, TimestampMixin):
     __tablename__ = 'experiments'
 
     id = db.Column(db.Integer, primary_key=True)
-<<<<<<< HEAD
-=======
+
+
     name = db.Column(db.String(128), nullable=False, default='Untitled Experiment')
     status = db.Column(db.String(32), nullable=False, default='active')
     finished_at = db.Column(db.DateTime)
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
     cell_line = db.Column(db.String(128), nullable=False)
     passage_number = db.Column(db.String(64))
     cell_concentration = db.Column(db.Float)
@@ -103,11 +103,11 @@ class Experiment(db.Model, TimestampMixin):
 
     preps = db.relationship('LentivirusPrep', backref='experiment', cascade='all, delete-orphan')
 
-<<<<<<< HEAD
+
     def to_dict(self):
         return {
             'id': self.id,
-=======
+
     def to_dict(self, include_children: bool = False):
         plates_allocated = sum((prep.plate_count or 0) for prep in self.preps)
         completed_preps = sum(1 for prep in self.preps if prep.transfection is not None)
@@ -116,7 +116,7 @@ class Experiment(db.Model, TimestampMixin):
             'name': self.name,
             'status': self.status,
             'finished_at': self.finished_at.isoformat() if self.finished_at else None,
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
             'cell_line': self.cell_line,
             'passage_number': self.passage_number,
             'cell_concentration': self.cell_concentration,
@@ -126,11 +126,11 @@ class Experiment(db.Model, TimestampMixin):
             'media_type': self.media_type,
             'vessels_seeded': self.vessels_seeded,
             'seeding_date': self.seeding_date.isoformat() if self.seeding_date else None,
-<<<<<<< HEAD
+
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
         }
-=======
+
             'prep_count': len(self.preps),
             'completed_preps': completed_preps,
             'plates_allocated': plates_allocated,
@@ -143,7 +143,7 @@ class Experiment(db.Model, TimestampMixin):
         if include_children:
             data['preps'] = [prep.to_dict(include_children=True) for prep in self.preps]
         return data
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
 
 class LentivirusPrep(db.Model, TimestampMixin):
@@ -155,20 +155,20 @@ class LentivirusPrep(db.Model, TimestampMixin):
     transfer_concentration = db.Column(db.Float)
     plasmid_size_bp = db.Column(db.Integer)
     cell_line_used = db.Column(db.String(128))
-<<<<<<< HEAD
-=======
+
+
     plate_count = db.Column(db.Integer, nullable=False, default=1)
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
     transfection = db.relationship('Transfection', uselist=False, backref='prep', cascade='all, delete-orphan')
     media_change = db.relationship('MediaChange', uselist=False, backref='prep', cascade='all, delete-orphan')
     harvest = db.relationship('Harvest', uselist=False, backref='prep', cascade='all, delete-orphan')
     titer_runs = db.relationship('TiterRun', backref='prep', cascade='all, delete-orphan')
 
-<<<<<<< HEAD
+
     def to_dict(self):
         return {
-=======
+
     def latest_titer_summary(self):
         if not self.titer_runs:
             return None
@@ -194,13 +194,13 @@ class LentivirusPrep(db.Model, TimestampMixin):
             'titered': bool(self.titer_runs),
         }
         data = {
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
             'id': self.id,
             'experiment_id': self.experiment_id,
             'transfer_name': self.transfer_name,
             'transfer_concentration': self.transfer_concentration,
             'plasmid_size_bp': self.plasmid_size_bp,
-<<<<<<< HEAD
+
             'cell_line_used': self.cell_line_used,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
@@ -208,7 +208,7 @@ class LentivirusPrep(db.Model, TimestampMixin):
             'media_change': self.media_change.to_dict() if self.media_change else None,
             'harvest': self.harvest.to_dict() if self.harvest else None,
         }
-=======
+
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
             'vessel_type': self.experiment.vessel_type if self.experiment else None,
@@ -222,7 +222,7 @@ class LentivirusPrep(db.Model, TimestampMixin):
             data['harvest'] = self.harvest.to_dict() if self.harvest else None
             data['titer_runs'] = [run.to_dict(include_samples=True) for run in self.titer_runs]
         return data
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
 
 class Transfection(db.Model, TimestampMixin):
@@ -242,8 +242,8 @@ class Transfection(db.Model, TimestampMixin):
     packaging_mass_ug = db.Column(db.Float)
     envelope_mass_ug = db.Column(db.Float)
     ratio_mode = db.Column(db.String(32), default='optimal')
-<<<<<<< HEAD
-=======
+
+
     transfer_volume_ul = db.Column(db.Float)
     packaging_volume_ul = db.Column(db.Float)
     envelope_volume_ul = db.Column(db.Float)
@@ -251,7 +251,7 @@ class Transfection(db.Model, TimestampMixin):
     packaging_concentration_ng_ul = db.Column(db.Float)
     envelope_concentration_ng_ul = db.Column(db.Float)
     ratio_display = db.Column(db.String(64))
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
     def to_dict(self):
         return {
@@ -269,8 +269,8 @@ class Transfection(db.Model, TimestampMixin):
             'packaging_mass_ug': self.packaging_mass_ug,
             'envelope_mass_ug': self.envelope_mass_ug,
             'ratio_mode': self.ratio_mode,
-<<<<<<< HEAD
-=======
+
+
             'transfer_volume_ul': self.transfer_volume_ul,
             'packaging_volume_ul': self.packaging_volume_ul,
             'envelope_volume_ul': self.envelope_volume_ul,
@@ -278,7 +278,7 @@ class Transfection(db.Model, TimestampMixin):
             'packaging_concentration_ng_ul': self.packaging_concentration_ng_ul,
             'envelope_concentration_ng_ul': self.envelope_concentration_ng_ul,
             'ratio_display': self.ratio_display,
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
             'created_at': self.created_at.isoformat(),
         }
 
@@ -331,12 +331,12 @@ class TiterRun(db.Model, TimestampMixin):
     selection_concentration = db.Column(db.String(64))
     tests_count = db.Column(db.Integer, default=1)
     notes = db.Column(db.Text)
-<<<<<<< HEAD
-=======
+
+
     polybrene_ug_ml = db.Column(db.Float)
     measurement_media_ml = db.Column(db.Float)
     control_cell_concentration = db.Column(db.Float)
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
     samples = db.relationship('TiterSample', backref='titer_run', cascade='all, delete-orphan')
 
@@ -351,12 +351,12 @@ class TiterRun(db.Model, TimestampMixin):
             'selection_concentration': self.selection_concentration,
             'tests_count': self.tests_count,
             'notes': self.notes,
-<<<<<<< HEAD
-=======
+
+
             'polybrene_ug_ml': self.polybrene_ug_ml,
             'measurement_media_ml': self.measurement_media_ml,
             'control_cell_concentration': self.control_cell_concentration,
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
             'created_at': self.created_at.isoformat(),
         }
         if include_samples:
@@ -375,10 +375,10 @@ class TiterSample(db.Model, TimestampMixin):
     measured_percent = db.Column(db.Float)
     moi = db.Column(db.Float)
     titer_tu_ml = db.Column(db.Float)
-<<<<<<< HEAD
-=======
+
+
     cell_concentration = db.Column(db.Float)
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
     def to_dict(self):
         return {
@@ -389,11 +389,11 @@ class TiterSample(db.Model, TimestampMixin):
             'measured_percent': self.measured_percent,
             'moi': self.moi,
             'titer_tu_ml': self.titer_tu_ml,
-<<<<<<< HEAD
+
         }
 
 
-=======
+
             'cell_concentration': self.cell_concentration,
         }
 
@@ -456,7 +456,7 @@ def parse_shorthand_number(value):
     return None
 
 
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 def calculate_surface_ratio(vessel_type: str) -> float:
     surface_area = SURFACE_AREAS.get(vessel_type)
     if not surface_area:
@@ -514,11 +514,11 @@ def compute_titer(cells_at_transduction: float, moi: float, virus_volume_ul: flo
     return cells_at_transduction * (moi / volume_ml)
 
 
-<<<<<<< HEAD
+
 @app.route('/')
 def index():
     return render_template('index.html', surface_areas=SURFACE_AREAS)
-=======
+
 def round_titer_average(value: float | None):
     if value in (None, 0):
         return 0 if value == 0 else None
@@ -660,7 +660,7 @@ def index():
         today=today,
         default_media='DMEM + 10% FBS',
     )
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
 
 @app.route('/api/experiments', methods=['GET', 'POST'])
@@ -668,7 +668,7 @@ def experiments_endpoint():
     if request.method == 'POST':
         data = request.json
         seeding_date = datetime.strptime(data.get('seeding_date'), '%Y-%m-%d').date() if data.get('seeding_date') else None
-<<<<<<< HEAD
+
         experiment = Experiment(
             cell_line=data['cell_line'],
             passage_number=data.get('passage_number'),
@@ -682,7 +682,7 @@ def experiments_endpoint():
         )
         db.session.add(experiment)
         db.session.commit()
-=======
+
         vessels_seeded = parse_positive_int(data.get('vessels_seeded'), default=1)
         cells_to_seed = parse_shorthand_number(data.get('cells_to_seed'))
         if cells_to_seed is None:
@@ -718,14 +718,14 @@ def experiments_endpoint():
             db.session.rollback()
             app.logger.exception('Failed to persist experiment')
             return jsonify({'error': 'Unable to save experiment', 'details': str(exc)}), 500
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
         return jsonify({'experiment': experiment.to_dict()})
 
     experiments = Experiment.query.order_by(Experiment.created_at.desc()).all()
     return jsonify({'experiments': [exp.to_dict() for exp in experiments]})
 
 
-<<<<<<< HEAD
+
 @app.route('/api/experiments/<int:experiment_id>', methods=['PUT'])
 def update_experiment(experiment_id):
     experiment = Experiment.query.get_or_404(experiment_id)
@@ -734,7 +734,7 @@ def update_experiment(experiment_id):
                   'vessel_type', 'seeding_volume_ml', 'media_type', 'vessels_seeded']:
         if field in data:
             setattr(experiment, field, data[field])
-=======
+
 @app.route('/api/experiments/<int:experiment_id>', methods=['GET', 'PUT', 'DELETE'])
 def experiment_detail(experiment_id):
     experiment = Experiment.query.get_or_404(experiment_id)
@@ -778,7 +778,7 @@ def experiment_detail(experiment_id):
     for field, value in updates.items():
         if value is not None or field in data:
             setattr(experiment, field, value)
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
     if 'seeding_date' in data:
         experiment.seeding_date = datetime.strptime(data['seeding_date'], '%Y-%m-%d').date() if data['seeding_date'] else None
     db.session.commit()
@@ -787,7 +787,7 @@ def experiment_detail(experiment_id):
 
 @app.route('/api/experiments/<int:experiment_id>/preps', methods=['POST', 'GET'])
 def prep_endpoint(experiment_id):
-<<<<<<< HEAD
+
     Experiment.query.get_or_404(experiment_id)
     if request.method == 'POST':
         data = request.json
@@ -803,7 +803,7 @@ def prep_endpoint(experiment_id):
         return jsonify({'prep': prep.to_dict()})
     preps = LentivirusPrep.query.filter_by(experiment_id=experiment_id).all()
     return jsonify({'preps': [prep.to_dict() for prep in preps]})
-=======
+
     experiment = Experiment.query.get_or_404(experiment_id)
     if request.method == 'POST':
         data = request.json
@@ -867,17 +867,17 @@ def update_prep(prep_id):
         prep.plate_count = new_count
     db.session.commit()
     return jsonify({'prep': prep.to_dict(include_children=True)})
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
 
 @app.route('/api/preps/<int:prep_id>/transfection', methods=['POST'])
 def transfection_endpoint(prep_id):
     prep = LentivirusPrep.query.get_or_404(prep_id)
-<<<<<<< HEAD
-=======
+
+
     experiment = prep.experiment
     vessel_type = experiment.vessel_type if experiment else BASE_TRANSFECTION['vessel']
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
     data = request.json
     ratio_mode = data.get('ratio_mode', 'optimal')
     ratio = data.get('ratio')
@@ -885,7 +885,7 @@ def transfection_endpoint(prep_id):
         ratio = DEFAULT_MOLAR_RATIO
     else:
         ratio = tuple(float(x) for x in ratio)
-<<<<<<< HEAD
+
     scaling = calculate_transfection_scaling(data['vessel_type'], ratio)
     transfection = Transfection(
         prep=prep,
@@ -902,7 +902,7 @@ def transfection_endpoint(prep_id):
         envelope_mass_ug=scaling['envelope_mass_ug'],
         ratio_mode=ratio_mode,
     )
-=======
+
 
     scaling = calculate_transfection_scaling(vessel_type, ratio)
 
@@ -948,7 +948,7 @@ def transfection_endpoint(prep_id):
     transfection.envelope_volume_ul = envelope_volume
     transfection.ratio_display = ratio_display
 
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
     db.session.add(transfection)
     db.session.commit()
     return jsonify({'transfection': transfection.to_dict()})
@@ -958,13 +958,13 @@ def transfection_endpoint(prep_id):
 def media_change_endpoint(prep_id):
     prep = LentivirusPrep.query.get_or_404(prep_id)
     data = request.json
-<<<<<<< HEAD
+
     media_change = MediaChange(
         prep=prep,
         media_type=data['media_type'],
         volume_ml=data['volume_ml'],
     )
-=======
+
     volume = parse_optional_float(data.get('volume_ml'))
     if volume is None:
         return jsonify({'error': 'volume_ml is required'}), 400
@@ -974,7 +974,7 @@ def media_change_endpoint(prep_id):
     media_change = prep.media_change or MediaChange(prep=prep)
     media_change.media_type = media_type
     media_change.volume_ml = volume
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
     db.session.add(media_change)
     db.session.commit()
     return jsonify({'media_change': media_change.to_dict()})
@@ -985,13 +985,13 @@ def harvest_endpoint(prep_id):
     prep = LentivirusPrep.query.get_or_404(prep_id)
     data = request.json
     harvest_date = datetime.strptime(data.get('harvest_date'), '%Y-%m-%d').date() if data.get('harvest_date') else None
-<<<<<<< HEAD
+
     harvest = Harvest(
         prep=prep,
         harvest_date=harvest_date,
         volume_ml=data.get('volume_ml'),
     )
-=======
+
     volume = data.get('volume_ml')
     if volume in (None, '') and prep.media_change:
         volume = prep.media_change.volume_ml
@@ -1001,7 +1001,7 @@ def harvest_endpoint(prep_id):
     harvest = prep.harvest or Harvest(prep=prep)
     harvest.harvest_date = harvest_date
     harvest.volume_ml = volume_value
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
     db.session.add(harvest)
     db.session.commit()
     return jsonify({'harvest': harvest.to_dict()})
@@ -1012,12 +1012,12 @@ def titer_runs_endpoint(prep_id):
     LentivirusPrep.query.get_or_404(prep_id)
     if request.method == 'POST':
         data = request.json
-<<<<<<< HEAD
+
         titer_run = TiterRun(
             prep_id=prep_id,
             cell_line=data['cell_line'],
             cells_seeded=data['cells_seeded'],
-=======
+
         cells_seeded = parse_shorthand_number(data.get('cells_seeded'))
         if cells_seeded is None:
             return jsonify({'error': 'cells_seeded is required'}), 400
@@ -1025,18 +1025,18 @@ def titer_runs_endpoint(prep_id):
             prep_id=prep_id,
             cell_line=data['cell_line'],
             cells_seeded=cells_seeded,
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
             vessel_type=data['vessel_type'],
             selection_reagent=data.get('selection_reagent'),
             selection_concentration=data.get('selection_concentration'),
             tests_count=data.get('tests_count', 1),
             notes=data.get('notes'),
-<<<<<<< HEAD
-=======
+
+
             polybrene_ug_ml=parse_shorthand_number(data.get('polybrene_ug_ml')),
             measurement_media_ml=parse_shorthand_number(data.get('measurement_media_ml')),
             control_cell_concentration=parse_shorthand_number(data.get('control_cell_concentration')),
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
         )
         db.session.add(titer_run)
         db.session.flush()
@@ -1046,11 +1046,11 @@ def titer_runs_endpoint(prep_id):
                 titer_run_id=titer_run.id,
                 label=sample['label'],
                 virus_volume_ul=sample['virus_volume_ul'],
-<<<<<<< HEAD
+
                 selection_used=sample.get('selection_used', False),
-=======
+
                 selection_used=sample.get('selection_used', True),
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
             )
             db.session.add(sample_entry)
         db.session.commit()
@@ -1063,7 +1063,7 @@ def titer_runs_endpoint(prep_id):
 def titer_results_endpoint(run_id):
     run = TiterRun.query.get_or_404(run_id)
     data = request.json
-<<<<<<< HEAD
+
     control_percent = data.get('control_percent', 100)
     cells_at_transduction = run.cells_seeded
 
@@ -1077,7 +1077,7 @@ def titer_results_endpoint(run_id):
         moi = compute_moi(fraction_infected)
         titer = compute_titer(cells_at_transduction, moi, sample.virus_volume_ul)
         sample.measured_percent = measured_percent
-=======
+
     measurement_media_ml = parse_shorthand_number(data.get('measurement_media_ml'))
     control_concentration = parse_shorthand_number(data.get('control_cell_concentration'))
     if measurement_media_ml is not None:
@@ -1138,7 +1138,7 @@ def titer_results_endpoint(run_id):
         moi = compute_moi(fraction_infected)
         titer = compute_titer(cells_at_transduction, moi, sample.virus_volume_ul)
         sample.measured_percent = round(measured_percent, 2)
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
         sample.moi = round(moi, 4) if math.isfinite(moi) else None
         sample.titer_tu_ml = round(titer, 2) if math.isfinite(titer) else None
         updated_samples.append(sample.to_dict())
@@ -1147,20 +1147,20 @@ def titer_results_endpoint(run_id):
     average_titer = None
     titers = [s['titer_tu_ml'] for s in updated_samples if s['titer_tu_ml'] is not None]
     if titers:
-<<<<<<< HEAD
+
         average_titer = round(sum(titers) / len(titers), 2)
-=======
+
         average_titer = round_titer_average(sum(titers) / len(titers))
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
     return jsonify({
         'samples': updated_samples,
         'average_titer': average_titer,
-<<<<<<< HEAD
-=======
+
+
         'control_cell_concentration': run.control_cell_concentration,
         'measurement_media_ml': run.measurement_media_ml,
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
     })
 
 
@@ -1177,8 +1177,8 @@ def metrics_transfection():
     scaling = calculate_transfection_scaling(vessel_type, ratio_values)
     scaling['surface_area'] = SURFACE_AREAS[vessel_type]
     scaling['ratio'] = ratio_values
-<<<<<<< HEAD
-=======
+
+
     def compute_volume(mass_ug, concentration_ng_ul):
         if concentration_ng_ul in (None, 0):
             return None
@@ -1200,7 +1200,7 @@ def metrics_transfection():
         scaling['envelope_mass_ug'], data.get('envelope_concentration_ng_ul')
     )
     scaling['ratio_display'] = f"{ratio_values[0]}:{ratio_values[1]}:{ratio_values[2]}"
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
     return jsonify(scaling)
 
 
@@ -1233,10 +1233,10 @@ def metrics_titer():
 
 with app.app_context():
     db.create_all()
-<<<<<<< HEAD
-=======
+
+
     ensure_sqlite_schema()
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 
 
 if __name__ == '__main__':
