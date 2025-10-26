@@ -37,6 +37,7 @@ const state = {
     },
     titerSaveScope: 'all',
     titerSaveTarget: null,
+    titerPlanCopy: '',
     currentRunId: null
 };
 
@@ -915,6 +916,23 @@ function copyTransfectionLabels() {
     }
 }
 
+function copyTransfectionLabelTable() {
+    const button = document.getElementById('copyTransfectionTable');
+    const selected = getSelectedPrepIds();
+    if (!selected.length || !button) return;
+    const cellLine = state.activeExperiment?.cell_line || '';
+    const rows = selected
+        .map((id) => {
+            const prep = getPrepById(id);
+            if (!prep) return null;
+            return `${prep.transfer_name}\t${cellLine}\t${isoToday()}`;
+        })
+        .filter(Boolean);
+    if (!rows.length) return;
+    const header = 'Transfer name\tCell line\tDate';
+    copyToClipboard(button, [header, ...rows].join('\n'));
+}
+
 async function saveTransfection() {
     const selected = getSelectedPrepIds();
     if (!selected.length) return;
@@ -1209,6 +1227,28 @@ function copyHarvestLabelTable() {
     copyToClipboard(button, [header, ...rows].join('\n'));
 }
 
+function setTiterPlanCopy(text) {
+    state.titerPlanCopy = text || '';
+    const button = document.getElementById('copyTiterPlanLabels');
+    if (!button) return;
+    const value = state.titerPlanCopy.trim();
+    if (value) {
+        button.hidden = false;
+        button.dataset.clipboard = state.titerPlanCopy;
+    } else {
+        button.hidden = true;
+        button.dataset.clipboard = '';
+    }
+}
+
+function handleCopyTiterPlanLabels() {
+    const button = document.getElementById('copyTiterPlanLabels');
+    if (!button) return;
+    const text = (button.dataset.clipboard || '').trim();
+    if (!text) return;
+    copyToClipboard(button, button.dataset.clipboard);
+}
+
 async function saveHarvests() {
     try {
         for (const prepId of getSelectedPrepIds()) {
@@ -1436,6 +1476,7 @@ function renderTiterSetupSection() {
     errorBanner.textContent = '';
 
     if (!selected.length) {
+        setTiterPlanCopy('');
         placeholder.hidden = false;
         form.hidden = true;
         tableWrapper.hidden = true;
@@ -1483,6 +1524,7 @@ function renderTiterSetupSection() {
     renderTiterPrepTable();
     renderTiterSamples();
     renderTiterRunsList();
+    setTiterPlanCopy(state.titerPlanCopy);
 }
 
 function generateTiterSamples() {
@@ -1541,16 +1583,27 @@ async function saveTiterSetup() {
         return;
     }
 
+    const labelRows = [];
     try {
+        const selectionName = formState.selectionReagent;
         for (const prepId of targets) {
+            const prep = getPrepById(prepId);
             const draft = state.titerPrepInputs.get(prepId) || { cellsSeeded: '' };
             const cellsSeeded = parseNumericInput(draft.cellsSeeded);
             if (cellsSeeded === null) throw new Error('Enter cells seeded for each preparation.');
+            const cellsLabel = Number(cellsSeeded).toLocaleString();
             const samples = state.titerSamples.map((sample) => ({
                 label: sample.label,
                 virus_volume_ul: Number(sample.volume) || 0,
                 selection_used: !!sample.selection
             }));
+            state.titerSamples
+                .filter((sample) => sample.role === 'test')
+                .forEach((sample) => {
+                    const volumeValue = sample.volume === '' || sample.volume == null ? 0 : Number(sample.volume);
+                    const volumeText = Number.isFinite(volumeValue) ? volumeValue.toString() : '0';
+                    labelRows.push(`${prep?.transfer_name ?? ''} — ${formState.cellLine} — ${cellsLabel} cells — ${volumeText} µL`);
+                });
             await fetchJSON(api.titerRuns(prepId), {
                 method: 'POST',
                 body: JSON.stringify({
@@ -1568,10 +1621,16 @@ async function saveTiterSetup() {
                 })
             });
         }
+        if (labelRows.length) {
+            labelRows.push(`No LV + ${selectionName}`);
+            labelRows.push(`No LV − ${selectionName}`);
+        }
+        setTiterPlanCopy(labelRows.join('\n'));
         state.titerSamples = [];
         document.getElementById('titerSampleBuilder').hidden = true;
         await refreshActiveExperiment(targets[0]);
     } catch (error) {
+        setTiterPlanCopy('');
         errorBanner.textContent = error.message;
         errorBanner.hidden = false;
     }
@@ -1846,6 +1905,7 @@ function attachEventListeners() {
     document.getElementById('clearSelectedPreps').addEventListener('click', handleClearSelectedPreps);
     document.getElementById('applyTransfectionBulk').addEventListener('click', applyTransfectionBulk);
     document.getElementById('copyTransfectionLabels').addEventListener('click', copyTransfectionLabels);
+    document.getElementById('copyTransfectionTable').addEventListener('click', copyTransfectionLabelTable);
     document.getElementById('saveTransfection').addEventListener('click', saveTransfection);
     document.getElementById('applyMediaBulk').addEventListener('click', applyMediaBulk);
     document.getElementById('saveMediaChanges').addEventListener('click', saveMediaChanges);
@@ -1853,6 +1913,7 @@ function attachEventListeners() {
     document.getElementById('saveHarvests').addEventListener('click', saveHarvests);
     document.getElementById('generateTiterSamples').addEventListener('click', generateTiterSamples);
     document.getElementById('saveTiterSetup').addEventListener('click', saveTiterSetup);
+    document.getElementById('copyTiterPlanLabels').addEventListener('click', handleCopyTiterPlanLabels);
     document.getElementById('titerSaveScope').addEventListener('change', (event) => {
         state.titerSaveScope = event.target.value;
         if (state.titerSaveScope !== 'single') {
