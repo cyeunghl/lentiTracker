@@ -395,7 +395,7 @@ class TiterSample(db.Model, TimestampMixin):
 
 
             'cell_concentration': self.cell_concentration,
-        }
+        
 
 
 SHORTHAND_MULTIPLIERS = {
