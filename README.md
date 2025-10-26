@@ -31,6 +31,8 @@ This project provides a full-stack web application for tracking lentivirus produ
 
 3. Navigate to `http://127.0.0.1:5000` to use the tracker.
 
+
+The database (`lenti_tracker.db`) will be created automatically on first run in the project root.
 The SQLite database (`app/instance/lenti_tracker.db`) is created automatically the first time the app runs. Existing installations are upgraded in-place—the server migrates any legacy `app/lenti_tracker.db` file into the new location and then inspects the `experiments` table on startup to transparently add any missing columns that newer builds require.
 
 ## Tech Stack
