@@ -151,9 +151,9 @@
             <section class="card" id="prepCard">
                 <header class="card-header">
                     <h2>2 · Lentivirus preparations</h2>
-                    <p>Track plasmids per plate. Progress reflects total plates seeded.</p>
+                    <p>Assign transfer plasmids to seeded plates, manage plate counts, and monitor downstream status.</p>
                 </header>
-                <div class="prep-progress" id="prepProgress"></div>
+                <div id="prepCapacity" class="callout muted"></div>
                 <form id="prepForm" class="form-grid compact">
                     <div class="form-group">
                         <label for="transferName">Transfer plasmid</label>
@@ -167,193 +167,234 @@
                         <label for="plasmidSize">Plasmid size (bp)</label>
                         <input id="plasmidSize" type="number" step="1" placeholder="e.g. 9500">
                     </div>
+                    <div class="form-group">
+                        <label for="plateCountInput">Plates</label>
+                        <input id="plateCountInput" type="number" min="1" value="1">
+                    </div>
                     <div class="form-actions">
                         <button class="primary" type="submit">Save preparation</button>
                     </div>
                 </form>
-                <ul class="prep-list" id="prepList"></ul>
+                <div id="prepError" class="callout danger" hidden></div>
+                <div class="prep-toolbar">
+                    <div class="toolbar-actions">
+                        <button type="button" class="ghost small" id="selectAllPreps">Select all</button>
+                        <button type="button" class="ghost small" id="clearSelectedPreps">Clear</button>
+                    </div>
+                    <span id="prepSelectionSummary" class="muted"></span>
+                </div>
+                <div class="table-wrapper">
+                    <table class="prep-table">
+                        <thead>
+                            <tr>
+                                <th scope="col"></th>
+                                <th scope="col">Preparation</th>
+                                <th scope="col">Transfer conc. (ng/µL)</th>
+                                <th scope="col">Plasmid size (bp)</th>
+                                <th scope="col">Plates</th>
+                                <th scope="col">Status</th>
+                                <th scope="col" class="actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prepTableBody"></tbody>
+                    </table>
+                </div>
             </section>
             <section class="card" id="transfectionCard">
                 <header class="card-header">
                     <h2>3 · Transfection</h2>
-                    <p>Scaling uses the seeded vessel. Provide concentrations to compute volumes to add.</p>
+                    <p>Scaling uses the seeded vessel. Provide plasmid concentrations to compute volumes and update prep status.</p>
                 </header>
-                <div id="transfectionSummary" class="callout muted">Select a preparation to begin.</div>
-                <form id="transfectionForm" class="form-grid compact" hidden>
-                    <div class="form-group">
-                        <label>Vessel</label>
-                        <input id="transfectionVessel" type="text" readonly>
+                <div id="transfectionSection" class="workflow-section">
+                    <div id="transfectionPlaceholder" class="callout muted">Select one or more preparations to configure transfection.</div>
+                    <div id="transfectionBulkControls" class="bulk-controls" hidden>
+                        <div class="control-group">
+                            <label>Packaging concentration (ng/µL)
+                                <input type="number" step="any" id="bulkPackagingInput">
+                            </label>
+                            <label>Envelope concentration (ng/µL)
+                                <input type="number" step="any" id="bulkEnvelopeInput">
+                            </label>
+                            <button type="button" class="ghost small" id="applyTransfectionBulk">Apply to all rows</button>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="ratioMode">Molar ratio</label>
-                        <select id="ratioMode">
-                            <option value="optimal">4:3:1 (transfer:packaging:envelope)</option>
-                            <option value="custom">Custom</option>
-                        </select>
+                    <div class="table-wrapper" id="transfectionTableWrapper" hidden>
+                        <table class="workflow-table" id="transfectionTable">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Preparation</th>
+                                    <th scope="col">Molar ratio</th>
+                                    <th scope="col">Transfer (ng/µL)</th>
+                                    <th scope="col">Packaging (ng/µL)</th>
+                                    <th scope="col">Envelope (ng/µL)</th>
+                                    <th scope="col">Volumes to add (µL)</th>
+                                    <th scope="col" class="actions">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
-                    <div class="form-group">
-                        <label for="customRatio">Custom ratio</label>
-                        <input id="customRatio" type="text" placeholder="e.g. 5,3,1" disabled>
+                    <div id="transfectionActions" class="form-actions" hidden>
+                        <button type="button" class="primary" id="saveTransfection">Save transfection</button>
                     </div>
-                    <div class="form-group">
-                        <label for="transferConcentrationInput">Transfer concentration (ng/µL)</label>
-                        <input id="transferConcentrationInput" type="number" step="any">
-                    </div>
-                    <div class="form-group">
-                        <label for="packagingConcentrationInput">Packaging concentration (ng/µL)</label>
-                        <input id="packagingConcentrationInput" type="number" step="any">
-                    </div>
-                    <div class="form-group">
-                        <label for="envelopeConcentrationInput">Envelope concentration (ng/µL)</label>
-                        <input id="envelopeConcentrationInput" type="number" step="any">
-                    </div>
-                    <div class="transfection-metrics" id="transfectionMetrics"></div>
-                    <div class="form-actions">
-                        <button class="primary" type="submit">Save transfection</button>
-                    </div>
-                </form>
+                    <div id="transfectionError" class="callout danger" hidden></div>
+                </div>
             </section>
             <section class="card" id="mediaCard">
                 <header class="card-header">
                     <h2>4 · Media change</h2>
-                    <p>Log the media and volume used during the refresh.</p>
+                    <p>Log the media and volume for individual or bulk updates. Saving updates each prep status.</p>
                 </header>
-                <form id="mediaForm" class="form-grid compact" hidden>
-                    <div class="form-group">
-                        <label for="mediaTypeSelect">Media</label>
-                        <select id="mediaTypeSelect">
-                            <option value="DMEM + 10% FBS">DMEM + 10% FBS</option>
-                            <option value="DMEM + 10% iFBS">DMEM + 10% iFBS</option>
-                            <option value="DMEM + 20% iFBS">DMEM + 20% iFBS</option>
-                            <option value="other">Other…</option>
-                        </select>
+                <div id="mediaSection" class="workflow-section">
+                    <div id="mediaPlaceholder" class="callout muted">Select preparations that have been transfected to log media changes.</div>
+                    <div id="mediaBulkControls" class="bulk-controls" hidden>
+                        <div class="control-group">
+                            <label>Media
+                                <select id="mediaBulkSelect">
+                                    <option value="DMEM + 10% FBS">DMEM + 10% FBS</option>
+                                    <option value="DMEM + 10% iFBS">DMEM + 10% iFBS</option>
+                                    <option value="DMEM + 20% iFBS">DMEM + 20% iFBS</option>
+                                    <option value="other">Other…</option>
+                                </select>
+                            </label>
+                            <label id="mediaBulkOtherWrapper" class="other-input" hidden>Custom media
+                                <input type="text" id="mediaBulkOther">
+                            </label>
+                            <label>Volume (mL)
+                                <input type="number" step="any" min="0" id="mediaBulkVolume">
+                            </label>
+                            <button type="button" class="ghost small" id="applyMediaBulk">Apply to all rows</button>
+                        </div>
                     </div>
-                    <div class="form-group" id="mediaOtherGroup" hidden>
-                        <label for="mediaOtherInput">Custom media</label>
-                        <input id="mediaOtherInput" type="text" placeholder="Describe media">
+                    <div id="mediaEntries" class="stack" hidden></div>
+                    <div id="mediaActions" class="form-actions" hidden>
+                        <button type="button" class="primary" id="saveMediaChanges">Save media change</button>
                     </div>
-                    <div class="form-group">
-                        <label for="mediaVolume">Volume (mL)</label>
-                        <input id="mediaVolume" type="number" step="any" min="0">
-                    </div>
-                    <div class="form-actions">
-                        <button class="primary" type="submit">Save media change</button>
-                    </div>
-                </form>
-                <div id="mediaSummary" class="callout muted">No media change logged.</div>
+                    <div id="mediaError" class="callout danger" hidden></div>
+                </div>
             </section>
             <section class="card" id="harvestCard">
                 <header class="card-header">
                     <h2>5 · Viral harvest</h2>
-                    <p>Capture harvest volume and copy printable labels.</p>
+                    <p>Log harvest dates and volumes. Labels omit extra prefixes and copy in one click.</p>
                 </header>
-                <form id="harvestForm" class="form-grid compact" hidden>
-                    <div class="form-group">
-                        <label for="harvestDate">Harvest date</label>
-                        <input id="harvestDate" type="date" value="{{ today }}">
+                <div id="harvestSection" class="workflow-section">
+                    <div id="harvestPlaceholder" class="callout muted">Select preparations with media changes to log harvests.</div>
+                    <div id="harvestEntries" class="stack" hidden></div>
+                    <div id="harvestActions" class="form-actions" hidden>
+                        <button type="button" class="primary" id="saveHarvests">Save harvest</button>
                     </div>
-                    <div class="form-group">
-                        <label for="harvestVolume">Harvest volume (mL)</label>
-                        <input id="harvestVolume" type="number" step="any" min="0">
-                    </div>
-                    <div class="form-actions">
-                        <button class="primary" type="submit">Save harvest</button>
-                    </div>
-                </form>
-                <div id="harvestSummary" class="callout muted">Harvest details will appear after saving.</div>
-                <div id="harvestLabel" class="label-preview" hidden>
-                    <p id="harvestLabelText"></p>
-                    <button id="copyHarvestLabel" class="ghost" type="button">Copy label text</button>
+                    <div id="harvestError" class="callout danger" hidden></div>
                 </div>
             </section>
             <section class="card" id="titerSetupCard">
                 <header class="card-header">
                     <h2>6 · Lentivirus titering setup</h2>
-                    <p>Plan infection tests, selection, and polybrene usage.</p>
+                    <p>Plan infection tests, selection conditions, and bulk apply wells for multiple preparations.</p>
                 </header>
-                <form id="titerSetupForm" class="form-grid compact" hidden>
-                    <div class="form-group">
-                        <label for="titerCellLine">Cell line for infection</label>
-                        <input id="titerCellLine" type="text" placeholder="e.g. HEK293T" required>
+                <div id="titerSetupSection" class="workflow-section">
+                    <div id="titerSetupPlaceholder" class="callout muted">Select harvested preparations to configure titering.</div>
+                    <form id="titerSetupForm" class="form-grid compact" hidden>
+                        <div class="form-group">
+                            <label for="titerCellLine">Cell line for infection</label>
+                            <input id="titerCellLine" type="text" placeholder="e.g. HEK293T" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="titerVessel">Vessel type</label>
+                            <select id="titerVessel">
+                                <option value="6-well">6-well</option>
+                                <option value="96-well">96-well</option>
+                                <option value="48-well">48-well</option>
+                                <option value="24-well">24-well</option>
+                                <option value="12-well">12-well</option>
+                                <option value="10 cm dish">10 cm dish</option>
+                                <option value="15 cm dish">15 cm dish</option>
+                                <option value="T25">T25</option>
+                                <option value="T75">T75</option>
+                                <option value="T175">T175</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="selectionReagent">Selection reagent</label>
+                            <select id="selectionReagent">
+                                <option value="Puromycin">Puromycin</option>
+                                <option value="Blasticidin">Blasticidin</option>
+                                <option value="Hygromycin">Hygromycin</option>
+                                <option value="Other">Others…</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="selectionOtherGroup" hidden>
+                            <label for="selectionOtherInput">Custom selection reagent</label>
+                            <input id="selectionOtherInput" type="text" placeholder="Enter reagent name">
+                        </div>
+                        <div class="form-group">
+                            <label for="selectionConcentration">Selection concentration (µg/mL)</label>
+                            <input id="selectionConcentration" type="number" min="0" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="polybreneInput">Polybrene (µg/mL)</label>
+                            <input id="polybreneInput" type="number" min="0" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="testsCount">Number of test concentrations</label>
+                            <input id="testsCount" type="number" min="1" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="titerNotes">Notes</label>
+                            <textarea id="titerNotes" rows="2" placeholder="Any additional context"></textarea>
+                        </div>
+                    </form>
+                    <div id="titerPrepTableWrapper" class="table-wrapper" hidden>
+                        <table class="workflow-table" id="titerPrepTable">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Preparation</th>
+                                    <th scope="col">Cells seeded</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
-                    <div class="form-group">
-                        <label for="titerCellsSeeded">Cells seeded</label>
-                        <input id="titerCellsSeeded" type="text" placeholder="e.g. 1M" required>
+                    <div id="titerSampleBuilder" class="stack" hidden>
+                        <header class="stack-header">Virus volumes per condition</header>
+                        <div id="titerSamples"></div>
                     </div>
-                    <div class="form-group">
-                        <label for="titerVessel">Vessel type</label>
-                        <select id="titerVessel">
-                            <option value="96-well">96-well</option>
-                            <option value="48-well">48-well</option>
-                            <option value="24-well">24-well</option>
-                            <option value="12-well">12-well</option>
-                            <option value="6-well">6-well</option>
-                            <option value="10 cm dish">10 cm dish</option>
-                            <option value="15 cm dish">15 cm dish</option>
-                            <option value="T25">T25</option>
-                            <option value="T75">T75</option>
-                            <option value="T175">T175</option>
-                        </select>
+                    <div id="titerSetupActions" class="form-actions" hidden>
+                        <button type="button" class="ghost" id="generateTiterSamples">Generate wells</button>
+                        <button type="button" class="primary" id="saveTiterSetup">Save titer plan</button>
                     </div>
-                    <div class="form-group">
-                        <label for="selectionReagent">Selection reagent</label>
-                        <select id="selectionReagent">
-                            <option value="Puromycin">Puromycin</option>
-                            <option value="Blasticidin">Blasticidin</option>
-                            <option value="Hygromycin">Hygromycin</option>
-                            <option value="Other">Other…</option>
-                        </select>
-                    </div>
-                    <div class="form-group" id="selectionOtherGroup" hidden>
-                        <label for="selectionOtherInput">Custom selection reagent</label>
-                        <input id="selectionOtherInput" type="text" placeholder="Enter reagent name">
-                    </div>
-                    <div class="form-group">
-                        <label for="selectionConcentration">Selection concentration</label>
-                        <input id="selectionConcentration" type="text" placeholder="e.g. 1 µg/mL">
-                    </div>
-                    <div class="form-group">
-                        <label for="polybreneInput">Polybrene (µg/mL)</label>
-                        <input id="polybreneInput" type="number" step="any" placeholder="e.g. 8">
-                    </div>
-                    <div class="form-group">
-                        <label for="testsCount">Number of test concentrations</label>
-                        <input id="testsCount" type="number" min="1" value="1">
-                    </div>
-                    <div class="form-group">
-                        <label for="titerNotes">Notes</label>
-                        <textarea id="titerNotes" rows="2" placeholder="Any additional context"></textarea>
-                    </div>
-                    <div class="form-actions">
-                        <button class="primary" type="button" id="buildSamples">Generate wells</button>
-                        <button class="ghost" type="submit">Save titer plan</button>
-                    </div>
-                    <div id="titerSamples"></div>
-                </form>
-                <div id="titerRunsList" class="callout muted">Create a preparation to begin.</div>
+                    <div id="titerSetupError" class="callout danger" hidden></div>
+                    <div id="titerRunsContainer" class="stack" hidden></div>
+                </div>
             </section>
             <section class="card" id="titerResultsCard">
                 <header class="card-header">
                     <h2>7 · Record results & calculate titer</h2>
-                    <p>Enter measured concentrations to compute survival, MOI, and TU/mL.</p>
+                    <p>Enter control-normalised concentrations to compute survival, MOI, and titers with rounded summaries.</p>
                 </header>
-                <div id="titerResultsPanel" class="callout muted">Select a titer run to record results.</div>
-                <form id="titerResultsForm" class="form-grid compact" hidden>
-                    <div class="form-group">
-                        <label for="resultsMeasurementVolume">Measurement media volume (mL)</label>
-                        <input id="resultsMeasurementVolume" type="number" step="any" min="0">
+                <div id="titerResultsSection" class="workflow-section">
+                    <div id="titerRunSelector" hidden>
+                        <label for="titerRunSelect">Titer run</label>
+                        <select id="titerRunSelect"></select>
                     </div>
-                    <div class="form-group">
-                        <label for="resultsControlConcentration">Control cell concentration (cells/mL)</label>
-                        <input id="resultsControlConcentration" type="text" placeholder="e.g. 750K">
-                    </div>
-                    <div id="resultsSamples"></div>
-                    <div class="form-actions">
-                        <button class="primary" type="submit">Save titer results</button>
-                    </div>
-                    <div class="titer-summary" id="titerSummary"></div>
-                    <button id="copyTiterSummary" type="button" class="ghost" hidden>Copy summary</button>
-                </form>
+                    <div id="titerResultsPlaceholder" class="callout muted">Select a titer run from the setup list.</div>
+                    <form id="titerResultsForm" class="form-grid compact" hidden>
+                        <div class="form-group">
+                            <label for="resultsMeasurementVolume">Measurement media volume (mL)</label>
+                            <input id="resultsMeasurementVolume" type="number" step="any" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="resultsControlConcentration">Control cell concentration (cells/mL)</label>
+                            <input id="resultsControlConcentration" type="text" placeholder="No LV − Selection">
+                        </div>
+                        <div id="resultsSamples"></div>
+                        <div class="form-actions">
+                            <button class="primary" type="submit">Save titer results</button>
+                        </div>
+                        <div class="titer-summary" id="titerSummary"></div>
+                        <button id="copyTiterSummary" type="button" class="ghost small" hidden>Copy summary</button>
+                    </form>
+                </div>
             </section>
         </div>
     </section>

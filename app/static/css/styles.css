@@ -474,3 +474,221 @@ button.danger {
         grid-template-columns: 1fr;
     }
 }
+.callout.danger {
+    background: rgba(186, 58, 58, 0.12);
+    border: 1px solid rgba(186, 58, 58, 0.2);
+    color: #7b1e1e;
+}
+
+.prep-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    margin-bottom: 12px;
+    gap: 12px;
+}
+
+.toolbar-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.muted {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+}
+
+.prep-table,
+.workflow-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card-bg);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+.prep-table th,
+.workflow-table th,
+.prep-table td,
+.workflow-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(110, 167, 216, 0.18);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.prep-table th.actions,
+.workflow-table th.actions,
+.row-actions {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+button.small {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+}
+
+button.small.danger {
+    color: #ba3a3a;
+}
+
+.inline-input {
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(110, 167, 216, 0.35);
+    font-family: inherit;
+}
+
+.status-bar {
+    display: flex;
+    gap: 6px;
+}
+
+.status-pill {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(158, 200, 245, 0.24);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #4d5e75;
+}
+
+.status-pill.complete {
+    background: rgba(80, 134, 194, 0.2);
+    color: var(--primary-dark);
+}
+
+.bulk-controls {
+    margin-bottom: 12px;
+}
+
+.control-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+}
+
+.control-group label {
+    display: flex;
+    flex-direction: column;
+    font-weight: 600;
+    color: #1d3051;
+    font-size: 0.9rem;
+}
+
+.control-group input,
+.control-group select {
+    margin-top: 4px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(110, 167, 216, 0.35);
+    font-family: inherit;
+}
+
+.metrics-cell {
+    font-size: 0.85rem;
+    color: #4d5e75;
+    line-height: 1.5;
+}
+
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.stack-item {
+    padding: 16px;
+    border: 1px solid rgba(110, 167, 216, 0.18);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: var(--shadow);
+}
+
+.stack-item header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.media-controls,
+.harvest-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+}
+
+.media-controls select,
+.media-controls input,
+.harvest-controls input {
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(110, 167, 216, 0.35);
+    font-family: inherit;
+}
+
+.sample-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid rgba(110, 167, 216, 0.18);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.85);
+}
+
+.sample-row header {
+    grid-column: 1 / -1;
+    font-weight: 600;
+    color: #1d3051;
+}
+
+.sample-row label {
+    display: flex;
+    flex-direction: column;
+    font-weight: 600;
+    color: #1d3051;
+}
+
+.sample-row input[type='text'],
+.sample-row input[type='number'] {
+    margin-top: 4px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(110, 167, 216, 0.35);
+    font-family: inherit;
+}
+
+.sample-row .metric {
+    font-size: 0.85rem;
+    color: #4d5e75;
+}
+
+.run-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.run-list .active {
+    background: rgba(80, 134, 194, 0.15);
+    border: 1px solid rgba(80, 134, 194, 0.35);
+}

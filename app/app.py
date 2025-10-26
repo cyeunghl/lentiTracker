@@ -88,6 +88,8 @@ class Experiment(db.Model, TimestampMixin):
     preps = db.relationship('LentivirusPrep', backref='experiment', cascade='all, delete-orphan')
 
     def to_dict(self, include_children: bool = False):
+        plates_allocated = sum((prep.plate_count or 0) for prep in self.preps)
+        completed_preps = sum(1 for prep in self.preps if prep.transfection is not None)
         data = {
             'id': self.id,
             'name': self.name,
@@ -103,7 +105,8 @@ class Experiment(db.Model, TimestampMixin):
             'vessels_seeded': self.vessels_seeded,
             'seeding_date': self.seeding_date.isoformat() if self.seeding_date else None,
             'prep_count': len(self.preps),
-            'completed_preps': sum(1 for prep in self.preps if prep.transfection is not None),
+            'completed_preps': completed_preps,
+            'plates_allocated': plates_allocated,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
         }
@@ -121,6 +124,7 @@ class LentivirusPrep(db.Model, TimestampMixin):
     transfer_concentration = db.Column(db.Float)
     plasmid_size_bp = db.Column(db.Integer)
     cell_line_used = db.Column(db.String(128))
+    plate_count = db.Column(db.Integer, nullable=False, default=1)
 
     transfection = db.relationship('Transfection', uselist=False, backref='prep', cascade='all, delete-orphan')
     media_change = db.relationship('MediaChange', uselist=False, backref='prep', cascade='all, delete-orphan')
@@ -128,6 +132,13 @@ class LentivirusPrep(db.Model, TimestampMixin):
     titer_runs = db.relationship('TiterRun', backref='prep', cascade='all, delete-orphan')
 
     def to_dict(self, include_children: bool = False):
+        status = {
+            'logged': True,
+            'transfected': self.transfection is not None,
+            'media_changed': self.media_change is not None,
+            'harvested': self.harvest is not None,
+            'titered': bool(self.titer_runs),
+        }
         data = {
             'id': self.id,
             'experiment_id': self.experiment_id,
@@ -137,6 +148,8 @@ class LentivirusPrep(db.Model, TimestampMixin):
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
             'vessel_type': self.experiment.vessel_type if self.experiment else None,
+            'plate_count': self.plate_count,
+            'status': status,
         }
         if include_children:
             data['transfection'] = self.transfection.to_dict() if self.transfection else None
@@ -306,6 +319,35 @@ SHORTHAND_MULTIPLIERS = {
 }
 
 
+def parse_positive_int(value, default=None):
+    if value in (None, ''):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number <= 0:
+        return default
+    return int(round(number))
+
+
+def total_plate_count(experiment, exclude_prep_id=None):
+    return sum(
+        (prep.plate_count or 0)
+        for prep in experiment.preps
+        if exclude_prep_id is None or prep.id != exclude_prep_id
+    )
+
+
+def parse_optional_float(value):
+    if value in (None, ''):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_shorthand_number(value):
     """Convert values like 750K or 1.5M to floats."""
     if value in (None, ""):
@@ -383,6 +425,16 @@ def compute_titer(cells_at_transduction: float, moi: float, virus_volume_ul: flo
         return 0.0
     volume_ml = virus_volume_ul / 1000.0
     return cells_at_transduction * (moi / volume_ml)
+
+
+def round_titer_average(value: float | None):
+    if value in (None, 0):
+        return 0 if value == 0 else None
+    magnitude = math.floor(math.log10(abs(value))) - 2
+    if magnitude < 0:
+        magnitude = 0
+    base = 10 ** magnitude
+    return int(round(value / base) * base)
 
 
 def ensure_sqlite_schema():
@@ -470,6 +522,21 @@ def ensure_sqlite_schema():
         'measurement_media_ml': 'FLOAT',
         'control_cell_concentration': 'FLOAT',
     }
+    prep_required = {
+        'plate_count': 'INTEGER'
+    }
+    if 'lentivirus_preps' in inspector.get_table_names():
+        existing = {column['name'] for column in inspector.get_columns('lentivirus_preps')}
+        missing = {name: ddl for name, ddl in prep_required.items() if name not in existing}
+        if missing:
+            with engine.begin() as connection:
+                for column_name, column_type in missing.items():
+                    connection.execute(
+                        text(f'ALTER TABLE lentivirus_preps ADD COLUMN {column_name} {column_type} DEFAULT 1')
+                    )
+                connection.execute(
+                    text('UPDATE lentivirus_preps SET plate_count = 1 WHERE plate_count IS NULL')
+                )
     if 'titer_runs' in inspector.get_table_names():
         existing = {column['name'] for column in inspector.get_columns('titer_runs')}
         missing = {name: ddl for name, ddl in titer_run_required.items() if name not in existing}
@@ -509,19 +576,12 @@ def experiments_endpoint():
     if request.method == 'POST':
         data = request.json
         seeding_date = datetime.strptime(data.get('seeding_date'), '%Y-%m-%d').date() if data.get('seeding_date') else None
-        vessels_seeded = data.get('vessels_seeded')
-        if isinstance(vessels_seeded, str) and vessels_seeded.strip():
-            try:
-                vessels_seeded = int(vessels_seeded)
-            except ValueError:
-                vessels_seeded = None
+        vessels_seeded = parse_positive_int(data.get('vessels_seeded'), default=1)
         cells_to_seed = parse_shorthand_number(data.get('cells_to_seed'))
         if cells_to_seed is None:
             return jsonify({'error': 'cells_to_seed is required'}), 400
         if seeding_date is None:
             seeding_date = datetime.utcnow().date()
-        if vessels_seeded in (None, ''):
-            vessels_seeded = 1
         name_value = (data.get('name') or '').strip()
         if not name_value:
             base_date = seeding_date.isoformat() if seeding_date else datetime.utcnow().date().isoformat()
@@ -578,12 +638,7 @@ def experiment_detail(experiment_id):
         'vessels_seeded': None,
     }
     if 'vessels_seeded' in data:
-        vessels_seeded = data.get('vessels_seeded')
-        if isinstance(vessels_seeded, str) and vessels_seeded.strip():
-            try:
-                vessels_seeded = int(vessels_seeded)
-            except ValueError:
-                vessels_seeded = None
+        vessels_seeded = parse_positive_int(data.get('vessels_seeded'))
         updates['vessels_seeded'] = vessels_seeded
     if 'cells_to_seed' in data:
         cells_to_seed = parse_shorthand_number(data.get('cells_to_seed'))
@@ -613,17 +668,32 @@ def experiment_detail(experiment_id):
 
 @app.route('/api/experiments/<int:experiment_id>/preps', methods=['POST', 'GET'])
 def prep_endpoint(experiment_id):
-    Experiment.query.get_or_404(experiment_id)
+    experiment = Experiment.query.get_or_404(experiment_id)
     if request.method == 'POST':
         data = request.json
+        plate_count = parse_positive_int(data.get('plate_count'), default=1)
+        if plate_count is None:
+            return jsonify({'error': 'plate_count must be a positive integer'}), 400
+        capacity = experiment.vessels_seeded
+        if capacity:
+            used = total_plate_count(experiment)
+            remaining = capacity - used
+            if plate_count > remaining:
+                if remaining <= 0:
+                    message = 'All seeded plates are already allocated to preparations'
+                else:
+                    message = f'Only {remaining} plate(s) remain available for this experiment'
+                return jsonify({'error': message}), 400
         prep = LentivirusPrep(
             experiment_id=experiment_id,
             transfer_name=data['transfer_name'],
-            transfer_concentration=data.get('transfer_concentration'),
-            plasmid_size_bp=data.get('plasmid_size_bp'),
+            transfer_concentration=parse_optional_float(data.get('transfer_concentration')),
+            plasmid_size_bp=parse_positive_int(data.get('plasmid_size_bp')),
+            plate_count=plate_count,
         )
         db.session.add(prep)
         db.session.commit()
+        db.session.refresh(experiment)
         return jsonify({'prep': prep.to_dict(include_children=True)})
     preps = LentivirusPrep.query.filter_by(experiment_id=experiment_id).all()
     return jsonify({'preps': [prep.to_dict(include_children=True) for prep in preps]})
@@ -637,9 +707,28 @@ def update_prep(prep_id):
         db.session.commit()
         return jsonify({'deleted': True})
     data = request.json
-    for field in ('transfer_name', 'transfer_concentration', 'plasmid_size_bp'):
-        if field in data:
-            setattr(prep, field, data.get(field))
+    if 'transfer_name' in data:
+        prep.transfer_name = data.get('transfer_name')
+    if 'transfer_concentration' in data:
+        prep.transfer_concentration = parse_optional_float(data.get('transfer_concentration'))
+    if 'plasmid_size_bp' in data:
+        prep.plasmid_size_bp = parse_positive_int(data.get('plasmid_size_bp'))
+    if 'plate_count' in data:
+        new_count = parse_positive_int(data.get('plate_count'))
+        if new_count is None:
+            return jsonify({'error': 'plate_count must be a positive integer'}), 400
+        experiment = prep.experiment
+        capacity = experiment.vessels_seeded if experiment else None
+        if capacity:
+            used = total_plate_count(experiment, exclude_prep_id=prep.id)
+            remaining = capacity - used
+            if new_count > remaining:
+                if remaining <= 0:
+                    message = 'All seeded plates are already allocated to other preparations'
+                else:
+                    message = f'Only {remaining} plate(s) remain available for this experiment'
+                return jsonify({'error': message}), 400
+        prep.plate_count = new_count
     db.session.commit()
     return jsonify({'prep': prep.to_dict(include_children=True)})
 
@@ -710,11 +799,15 @@ def transfection_endpoint(prep_id):
 def media_change_endpoint(prep_id):
     prep = LentivirusPrep.query.get_or_404(prep_id)
     data = request.json
-    media_change = MediaChange(
-        prep=prep,
-        media_type=data['media_type'],
-        volume_ml=data['volume_ml'],
-    )
+    volume = parse_optional_float(data.get('volume_ml'))
+    if volume is None:
+        return jsonify({'error': 'volume_ml is required'}), 400
+    media_type = data.get('media_type') or (prep.experiment.media_type if prep.experiment else None)
+    if not media_type:
+        return jsonify({'error': 'media_type is required'}), 400
+    media_change = prep.media_change or MediaChange(prep=prep)
+    media_change.media_type = media_type
+    media_change.volume_ml = volume
     db.session.add(media_change)
     db.session.commit()
     return jsonify({'media_change': media_change.to_dict()})
@@ -725,11 +818,15 @@ def harvest_endpoint(prep_id):
     prep = LentivirusPrep.query.get_or_404(prep_id)
     data = request.json
     harvest_date = datetime.strptime(data.get('harvest_date'), '%Y-%m-%d').date() if data.get('harvest_date') else None
-    harvest = Harvest(
-        prep=prep,
-        harvest_date=harvest_date,
-        volume_ml=data.get('volume_ml'),
-    )
+    volume = data.get('volume_ml')
+    if volume in (None, '') and prep.media_change:
+        volume = prep.media_change.volume_ml
+    volume_value = parse_optional_float(volume)
+    if volume_value is None:
+        return jsonify({'error': 'volume_ml is required'}), 400
+    harvest = prep.harvest or Harvest(prep=prep)
+    harvest.harvest_date = harvest_date
+    harvest.volume_ml = volume_value
     db.session.add(harvest)
     db.session.commit()
     return jsonify({'harvest': harvest.to_dict()})
@@ -784,33 +881,59 @@ def titer_results_endpoint(run_id):
     if control_concentration is not None:
         run.control_cell_concentration = control_concentration
     measurement_media = run.measurement_media_ml or 1.0
+    cells_at_transduction = run.cells_seeded
+
+    pending_updates = []
+    control_candidate = None
+    for sample_payload in data.get('samples', []):
+        sample = TiterSample.query.filter_by(id=sample_payload['id'], titer_run_id=run.id).first_or_404()
+        if 'selection_used' in sample_payload:
+            sample.selection_used = bool(sample_payload['selection_used'])
+        cell_concentration = parse_shorthand_number(sample_payload.get('cell_concentration'))
+        if cell_concentration is not None:
+            sample.cell_concentration = cell_concentration
+            if not sample.selection_used:
+                control_candidate = cell_concentration
+        pending_updates.append(
+            {
+                'sample': sample,
+                'cell_concentration': cell_concentration,
+                'measured_percent': sample_payload.get('measured_percent'),
+            }
+        )
+
+    if run.control_cell_concentration is None and control_candidate is not None:
+        run.control_cell_concentration = control_candidate
+
     control_cells = None
     if run.control_cell_concentration is not None:
         control_cells = run.control_cell_concentration * measurement_media
-    cells_at_transduction = run.cells_seeded
 
     updated_samples = []
-    for sample_data in data.get('samples', []):
-        sample = TiterSample.query.filter_by(id=sample_data['id'], titer_run_id=run.id).first_or_404()
-        if 'selection_used' in sample_data:
-            sample.selection_used = bool(sample_data['selection_used'])
-        cell_concentration = parse_shorthand_number(sample_data.get('cell_concentration'))
+    for entry in pending_updates:
+        sample = entry['sample']
         measured_percent = None
         survival_fraction = None
-        if cell_concentration is not None and control_cells not in (None, 0):
-            sample.cell_concentration = cell_concentration
-            sample_cells = cell_concentration * measurement_media
+        if entry['cell_concentration'] is not None and control_cells not in (None, 0):
+            sample_cells = entry['cell_concentration'] * measurement_media
             survival_fraction = sample_cells / control_cells if control_cells else 0
             measured_percent = max(0.0, survival_fraction * 100)
-        elif sample_data.get('measured_percent') is not None:
-            measured_percent = float(sample_data.get('measured_percent'))
+        elif entry['measured_percent'] is not None:
+            try:
+                measured_percent = float(entry['measured_percent'])
+            except (TypeError, ValueError):
+                measured_percent = None
             survival_fraction = measured_percent / 100 if measured_percent is not None else None
         if measured_percent is None or survival_fraction is None:
+            sample.measured_percent = None
+            sample.moi = None
+            sample.titer_tu_ml = None
+            updated_samples.append(sample.to_dict())
             continue
         fraction_infected = max(0.0, min(1.0, 1 - survival_fraction))
         moi = compute_moi(fraction_infected)
         titer = compute_titer(cells_at_transduction, moi, sample.virus_volume_ul)
-        sample.measured_percent = measured_percent
+        sample.measured_percent = round(measured_percent, 2)
         sample.moi = round(moi, 4) if math.isfinite(moi) else None
         sample.titer_tu_ml = round(titer, 2) if math.isfinite(titer) else None
         updated_samples.append(sample.to_dict())
@@ -819,11 +942,13 @@ def titer_results_endpoint(run_id):
     average_titer = None
     titers = [s['titer_tu_ml'] for s in updated_samples if s['titer_tu_ml'] is not None]
     if titers:
-        average_titer = round(sum(titers) / len(titers), 2)
+        average_titer = round_titer_average(sum(titers) / len(titers))
 
     return jsonify({
         'samples': updated_samples,
         'average_titer': average_titer,
+        'control_cell_concentration': run.control_cell_concentration,
+        'measurement_media_ml': run.measurement_media_ml,
     })
 
 
