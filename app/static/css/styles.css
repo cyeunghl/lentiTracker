@@ -142,6 +142,11 @@ button.danger {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
+.form-grid.seeding-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    align-items: end;
+}
+
 .form-grid.stacked {
     grid-template-columns: 1fr;
 }
