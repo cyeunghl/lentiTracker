@@ -1,6 +1,7 @@
 const api = {
     experiments: '/api/experiments',
     experimentDetail: (id) => `/api/experiments/${id}`,
+    experimentExport: (id) => `/api/experiments/${id}/export`,
     experimentPreps: (id) => `/api/experiments/${id}/preps`,
     prep: (id) => `/api/preps/${id}`,
     transfection: (prepId) => `/api/preps/${prepId}/transfection`,
@@ -205,6 +206,15 @@ function createExperimentCard(experiment) {
     });
     actions.appendChild(toggleButton);
 
+    if (status === 'finished') {
+        const exportButton = document.createElement('button');
+        exportButton.type = 'button';
+        exportButton.className = 'ghost';
+        exportButton.textContent = 'Export CSV';
+        exportButton.addEventListener('click', () => exportExperimentCsv(experiment.id, experiment.name));
+        actions.appendChild(exportButton);
+    }
+
     card.appendChild(actions);
     return card;
 }
@@ -267,6 +277,30 @@ async function updateExperiment(id, payload) {
 
 async function deleteExperiment(id) {
     await fetchJSON(api.experimentDetail(id), { method: 'DELETE' });
+}
+
+async function exportExperimentCsv(id, name) {
+    try {
+        const response = await fetch(api.experimentExport(id));
+        if (!response.ok) {
+            throw new Error('Unable to export experiment data.');
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const safeName = (name || 'experiment')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '') || `experiment-${id}`;
+        link.download = `${safeName}-lentivirus.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        alert(error.message || 'Unable to export experiment data.');
+    }
 }
 
 async function openExperimentDetail(experimentId) {

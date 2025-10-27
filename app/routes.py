@@ -1,11 +1,13 @@
 """Blueprint routes for the Lentivirus tracker Flask application."""
 from __future__ import annotations
 
+import csv
+import io
 import math
 from datetime import datetime
 from typing import Iterable
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, render_template, request
 
 from .constants import BASE_TRANSFECTION, DEFAULT_MOLAR_RATIO, SURFACE_AREAS
 from .database import db
@@ -156,6 +158,128 @@ def experiment_detail(experiment_id: int):
 
     db.session.commit()
     return jsonify({'experiment': experiment.to_dict()})
+
+
+@bp.route('/api/experiments/<int:experiment_id>/export', methods=['GET'])
+def export_experiment_csv(experiment_id: int) -> Response:
+    experiment = Experiment.query.get_or_404(experiment_id)
+
+    def format_number(value) -> str:
+        if value is None:
+            return ''
+        if isinstance(value, float):
+            if math.isnan(value) or math.isinf(value):
+                return ''
+            rounded = round(value, 4)
+            if rounded.is_integer():
+                return str(int(rounded))
+            return f"{rounded:.4f}".rstrip('0').rstrip('.')
+        return str(value)
+
+    def write_row(writer: csv.writer, section: str, prep_name: str | None, field: str, value: str | float | None) -> None:
+        writer.writerow([section, prep_name or '', field, value if isinstance(value, str) else format_number(value)])
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Section', 'Preparation', 'Field', 'Value'])
+
+    write_row(writer, 'Experiment', None, 'ID', experiment.id)
+    write_row(writer, 'Experiment', None, 'Name', experiment.name)
+    write_row(writer, 'Experiment', None, 'Status', experiment.status)
+    write_row(writer, 'Experiment', None, 'Cell line', experiment.cell_line)
+    write_row(writer, 'Experiment', None, 'Seeding date', experiment.seeding_date.isoformat() if experiment.seeding_date else '')
+    write_row(writer, 'Experiment', None, 'Cells to seed', format_number(experiment.cells_to_seed))
+    write_row(writer, 'Experiment', None, 'Vessel type', experiment.vessel_type)
+    write_row(writer, 'Experiment', None, 'Vessels seeded', format_number(experiment.vessels_seeded))
+    write_row(writer, 'Experiment', None, 'Media type', experiment.media_type)
+    write_row(writer, 'Experiment', None, 'Created at', experiment.created_at.isoformat())
+    if experiment.finished_at:
+        write_row(writer, 'Experiment', None, 'Finished at', experiment.finished_at.isoformat())
+
+    for prep in experiment.preps:
+        prep_name = prep.transfer_name
+        write_row(writer, 'Preparation', prep_name, 'Plate count', format_number(prep.plate_count))
+        write_row(writer, 'Preparation', prep_name, 'Transfer concentration (ng/µL)', format_number(prep.transfer_concentration))
+        write_row(writer, 'Preparation', prep_name, 'Plasmid size (bp)', format_number(prep.plasmid_size_bp))
+        status_labels = ['Logged']
+        if prep.transfection:
+            status_labels.append('Transfected')
+        if prep.media_change:
+            status_labels.append('Media changed')
+        if prep.harvest:
+            status_labels.append('Harvested')
+        if prep.titer_runs:
+            status_labels.append('Titered')
+        write_row(writer, 'Preparation', prep_name, 'Status', ' · '.join(status_labels))
+
+        if prep.transfection:
+            tx = prep.transfection
+            write_row(writer, 'Transfection', prep_name, 'Vessel type', tx.vessel_type)
+            write_row(writer, 'Transfection', prep_name, 'Surface area (cm²)', format_number(tx.surface_area))
+            write_row(writer, 'Transfection', prep_name, 'Opti-MEM (mL)', format_number(tx.opti_mem_ml))
+            write_row(writer, 'Transfection', prep_name, 'X-tremeGene 9 (µL)', format_number(tx.xtremegene_ul))
+            write_row(writer, 'Transfection', prep_name, 'Total plasmid (µg)', format_number(tx.total_plasmid_ug))
+            write_row(writer, 'Transfection', prep_name, 'Ratio display', tx.ratio_display)
+            write_row(writer, 'Transfection', prep_name, 'Transfer DNA (µg)', format_number(tx.transfer_mass_ug))
+            write_row(writer, 'Transfection', prep_name, 'Packaging DNA (µg)', format_number(tx.packaging_mass_ug))
+            write_row(writer, 'Transfection', prep_name, 'Envelope DNA (µg)', format_number(tx.envelope_mass_ug))
+            write_row(writer, 'Transfection', prep_name, 'Transfer concentration (ng/µL)', format_number(tx.transfer_concentration_ng_ul))
+            write_row(writer, 'Transfection', prep_name, 'Packaging concentration (ng/µL)', format_number(tx.packaging_concentration_ng_ul))
+            write_row(writer, 'Transfection', prep_name, 'Envelope concentration (ng/µL)', format_number(tx.envelope_concentration_ng_ul))
+            write_row(writer, 'Transfection', prep_name, 'Transfer volume (µL)', format_number(tx.transfer_volume_ul))
+            write_row(writer, 'Transfection', prep_name, 'Packaging volume (µL)', format_number(tx.packaging_volume_ul))
+            write_row(writer, 'Transfection', prep_name, 'Envelope volume (µL)', format_number(tx.envelope_volume_ul))
+            write_row(writer, 'Transfection', prep_name, 'Recorded at', tx.created_at.isoformat())
+
+        if prep.media_change:
+            media = prep.media_change
+            write_row(writer, 'Media change', prep_name, 'Media type', media.media_type)
+            write_row(writer, 'Media change', prep_name, 'Volume (mL)', format_number(media.volume_ml))
+            write_row(writer, 'Media change', prep_name, 'Recorded at', media.created_at.isoformat())
+
+        if prep.harvest:
+            harvest = prep.harvest
+            write_row(writer, 'Harvest', prep_name, 'Harvest date', harvest.harvest_date.isoformat() if harvest.harvest_date else '')
+            write_row(writer, 'Harvest', prep_name, 'Volume (mL)', format_number(harvest.volume_ml))
+            write_row(writer, 'Harvest', prep_name, 'Recorded at', harvest.created_at.isoformat())
+
+        for run in sorted(prep.titer_runs, key=lambda item: item.created_at):
+            write_row(writer, 'Titer run', prep_name, 'Run created', run.created_at.isoformat())
+            write_row(writer, 'Titer run', prep_name, 'Cell line', run.cell_line)
+            write_row(writer, 'Titer run', prep_name, 'Cells seeded', format_number(run.cells_seeded))
+            write_row(writer, 'Titer run', prep_name, 'Vessel type', run.vessel_type)
+            write_row(writer, 'Titer run', prep_name, 'Selection reagent', run.selection_reagent)
+            write_row(writer, 'Titer run', prep_name, 'Selection concentration', run.selection_concentration)
+            write_row(writer, 'Titer run', prep_name, 'Polybrene (µg/mL)', format_number(run.polybrene_ug_ml))
+            write_row(writer, 'Titer run', prep_name, 'Measurement media (mL)', format_number(run.measurement_media_ml))
+            write_row(writer, 'Titer run', prep_name, 'Control cell concentration', format_number(run.control_cell_concentration))
+            valid_titers = [sample.titer_tu_ml for sample in run.samples if sample.titer_tu_ml is not None]
+            average_titer = (
+                round_titer_average(sum(valid_titers) / len(valid_titers)) if valid_titers else None
+            )
+            write_row(writer, 'Titer run', prep_name, 'Average titer (TU/mL)', format_number(average_titer))
+            for sample in run.samples:
+                selection_label = 'With selection' if sample.selection_used else 'No selection'
+                if sample.selection_used and run.selection_reagent:
+                    selection_label = f"{selection_label} ({run.selection_reagent})"
+                parts = [
+                    f"Virus volume: {format_number(sample.virus_volume_ul)} µL" if sample.virus_volume_ul is not None else None,
+                    selection_label,
+                    f"Measured %: {format_number(sample.measured_percent)}" if sample.measured_percent is not None else None,
+                    f"MOI: {format_number(sample.moi)}" if sample.moi is not None else None,
+                    f"Titer: {format_number(sample.titer_tu_ml)} TU/mL" if sample.titer_tu_ml is not None else None,
+                ]
+                value = '; '.join(part for part in parts if part)
+                if sample.cell_concentration is not None:
+                    value = f"{value}; Cell concentration: {format_number(sample.cell_concentration)}"
+                write_row(writer, 'Titer sample', prep_name, sample.label, value)
+
+    csv_content = output.getvalue()
+    filename_base = ''.join(char for char in experiment.name if char.isalnum() or char in (' ', '-', '_')).strip()
+    filename = filename_base.replace(' ', '_') or f'experiment_{experiment.id}'
+    response = Response(csv_content, mimetype='text/csv')
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}.csv'
+    return response
 
 
 @bp.route('/api/experiments/<int:experiment_id>/preps', methods=['POST', 'GET'])

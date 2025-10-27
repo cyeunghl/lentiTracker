@@ -142,6 +142,10 @@ button.danger {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
+.form-grid.stacked {
+    grid-template-columns: 1fr;
+}
+
 .form-group {
     display: flex;
     flex-direction: column;
