@@ -72,6 +72,51 @@ function joinLabelParts(parts) {
         .join(' - ');
 }
 
+function toAsciiString(value) {
+    if (value === null || value === undefined) return '';
+    const text = value.toString();
+    const base = typeof text.normalize === 'function' ? text.normalize('NFKD') : text;
+    const normalized = base
+        .replace(/[µμ]/g, 'u')
+        .replace(/[–—]/g, '-');
+    let result = '';
+    for (let i = 0; i < normalized.length; i += 1) {
+        const code = normalized.charCodeAt(i);
+        if (code >= 32 && code <= 126) {
+            result += normalized[i];
+        } else if (code === 10 || code === 13) {
+            result += ' ';
+        }
+    }
+    return result;
+}
+
+function escapeCsvValue(value) {
+    const ascii = toAsciiString(value);
+    const needsQuotes = /[",\r\n]/.test(ascii);
+    const escaped = ascii.replace(/"/g, '""');
+    return needsQuotes ? `"${escaped}"` : escaped;
+}
+
+function buildSafeFilenameBase(name, fallback) {
+    const ascii = toAsciiString(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return ascii || fallback;
+}
+
+function downloadCsvFile(filename, rows) {
+    if (!rows.length) return;
+    const csv = rows.map((row) => row.map(escapeCsvValue).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=us-ascii' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+}
+
 function formatNumber(value) {
     if (value === null || value === undefined || Number.isNaN(value)) return '—';
     const number = Number(value);
@@ -990,6 +1035,67 @@ function copyTransfectionLabels() {
     if (text) {
         copyToClipboard(button, text);
     }
+}
+
+function exportTransfectionCsv() {
+    const selected = getSelectedPrepIds();
+    if (!selected.length) return;
+    const header = [
+        'Preparation',
+        'Vessel',
+        'Molar ratio',
+        'Transfer (ng/uL)',
+        'Packaging (ng/uL)',
+        'Envelope (ng/uL)',
+        'Opti-MEM (mL)',
+        'X-tremeGENE 9 (uL)',
+        'Transfer DNA (uL)',
+        'Packaging DNA (uL)',
+        'Envelope DNA (uL)'
+    ];
+    const rows = [header];
+    selected.forEach((id) => {
+        const prep = getPrepById(id);
+        if (!prep) return;
+        const draft = state.transfectionDraft.get(id) || null;
+        const metrics = draft?.metrics || null;
+        const ratioDisplay = draft?.ratioMode || prep.transfection?.ratio_display || '4:3:1';
+        const transferConc = draft?.transferConcentration ?? prep.transfer_concentration ?? '';
+        const packagingConc = draft?.packagingConcentration ?? '';
+        const envelopeConc = draft?.envelopeConcentration ?? '';
+        const optiMem = metrics ? formatVolume(metrics.opti_mem_ml, 3) : '';
+        const xtremegene = metrics ? formatVolume(metrics.xtremegene_ul, 2) : '';
+        const transferVol = metrics ? formatVolume(metrics.transfer_volume_ul, 2) : '';
+        const packagingVol = metrics ? formatVolume(metrics.packaging_volume_ul, 2) : '';
+        const envelopeVol = metrics ? formatVolume(metrics.envelope_volume_ul, 2) : '';
+        rows.push([
+            prep.transfer_name || '',
+            prep.vessel_type || '',
+            ratioDisplay || '',
+            transferConc || '',
+            packagingConc || '',
+            envelopeConc || '',
+            optiMem || '',
+            xtremegene || '',
+            transferVol || '',
+            packagingVol || '',
+            envelopeVol || ''
+        ]);
+    });
+    if (rows.length === 1) return;
+    const experiment = state.activeExperiment;
+    let base;
+    if (experiment) {
+        const fallback = `experiment-${experiment.id || 'transfection'}`;
+        base = buildSafeFilenameBase(experiment.name || '', fallback);
+        if (!base.endsWith('-transfection')) {
+            base = `${base}-transfection`;
+        }
+    } else {
+        base = 'transfection';
+    }
+    const filename = `${base}.csv`;
+    downloadCsvFile(filename, rows);
 }
 
 async function saveTransfection() {
@@ -1988,6 +2094,7 @@ function attachEventListeners() {
     document.getElementById('clearSelectedPreps').addEventListener('click', handleClearSelectedPreps);
     document.getElementById('applyTransfectionBulk').addEventListener('click', applyTransfectionBulk);
     document.getElementById('copyTransfectionLabels').addEventListener('click', copyTransfectionLabels);
+    document.getElementById('exportTransfectionCsv').addEventListener('click', exportTransfectionCsv);
     document.getElementById('saveTransfection').addEventListener('click', saveTransfection);
     document.getElementById('applyMediaBulk').addEventListener('click', applyMediaBulk);
     document.getElementById('saveMediaChanges').addEventListener('click', saveMediaChanges);
