@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 body {
     background-color: #f5f7fb;
 }
@@ -31,7 +30,6 @@ body {
 
 .badge-sample {
     font-size: 0.75rem;
-=======
 :root {
     --bg: #f4f7fb;
     --card-bg: #ffffff;
@@ -174,6 +172,15 @@ button.danger {
 
 .form-grid.compact {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.form-grid.seeding-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    align-items: end;
+}
+
+.form-grid.stacked {
+    grid-template-columns: 1fr;
 }
 
 .form-group {
@@ -692,6 +699,32 @@ button.small.danger {
     line-height: 1.5;
 }
 
+.metrics-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.metrics-table th,
+.metrics-table td {
+    padding: 4px 8px;
+}
+
+.metrics-table th {
+    text-align: left;
+    font-weight: 600;
+    color: #1d3051;
+}
+
+.metrics-table td {
+    text-align: right;
+    color: #2c4262;
+    font-variant-numeric: tabular-nums;
+}
+
+.metrics-table tr + tr {
+    border-top: 1px solid rgba(110, 167, 216, 0.25);
+}
+
 .stack {
     display: flex;
     flex-direction: column;
@@ -777,5 +810,5 @@ button.small.danger {
 .run-list .active {
     background: rgba(80, 134, 194, 0.15);
     border: 1px solid rgba(80, 134, 194, 0.35);
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 }

@@ -1,27 +1,23 @@
 const api = {
     experiments: '/api/experiments',
-<<<<<<< HEAD
-    preps: (experimentId) => `/api/experiments/${experimentId}/preps`,
-=======
     experimentDetail: (id) => `/api/experiments/${id}`,
+    experimentExport: (id) => `/api/experiments/${id}/export`,
     experimentPreps: (id) => `/api/experiments/${id}/preps`,
     prep: (id) => `/api/preps/${id}`,
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+    preps: (experimentId) => `/api/experiments/${experimentId}/preps`,
+
     transfection: (prepId) => `/api/preps/${prepId}/transfection`,
     mediaChange: (prepId) => `/api/preps/${prepId}/media-change`,
     harvest: (prepId) => `/api/preps/${prepId}/harvest`,
     titerRuns: (prepId) => `/api/preps/${prepId}/titer-runs`,
     titerResults: (runId) => `/api/titer-runs/${runId}/results`,
     metrics: {
-<<<<<<< HEAD
         seeding: '/api/metrics/seeding',
-=======
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
         transfection: '/api/metrics/transfection'
     }
 };
 
-<<<<<<< HEAD
 let experiments = [];
 let preps = [];
 let titerRuns = [];
@@ -39,7 +35,6 @@ async function fetchJSON(url, options = {}) {
         throw new Error(text || 'Request failed');
     }
     return response.json();
-=======
 const SHORTHAND_MULTIPLIERS = { K: 1e3, M: 1e6, B: 1e9 };
 
 const state = {
@@ -82,6 +77,67 @@ function parseNumericInput(value) {
     return null;
 }
 
+function formatVolume(value, digits = 2) {
+    if (value === null || value === undefined) return null;
+    const number = Number(value);
+    if (!Number.isFinite(number)) return null;
+    const fixed = number.toFixed(digits);
+    if (!fixed.includes('.')) return fixed;
+    return fixed.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0*$/, '');
+}
+
+function joinLabelParts(parts) {
+    return parts
+        .map((part) => (part ?? '').toString().trim())
+        .filter((part) => part.length > 0)
+        .join(' - ');
+}
+
+function toAsciiString(value) {
+    if (value === null || value === undefined) return '';
+    const text = value.toString();
+    const base = typeof text.normalize === 'function' ? text.normalize('NFKD') : text;
+    const normalized = base
+        .replace(/[µμ]/g, 'u')
+        .replace(/[–—]/g, '-');
+    let result = '';
+    for (let i = 0; i < normalized.length; i += 1) {
+        const code = normalized.charCodeAt(i);
+        if (code >= 32 && code <= 126) {
+            result += normalized[i];
+        } else if (code === 10 || code === 13) {
+            result += ' ';
+        }
+    }
+    return result;
+}
+
+function escapeCsvValue(value) {
+    const ascii = toAsciiString(value);
+    const needsQuotes = /[",\r\n]/.test(ascii);
+    const escaped = ascii.replace(/"/g, '""');
+    return needsQuotes ? `"${escaped}"` : escaped;
+}
+
+function buildSafeFilenameBase(name, fallback) {
+    const ascii = toAsciiString(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return ascii || fallback;
+}
+
+function downloadCsvFile(filename, rows) {
+    if (!rows.length) return;
+    const csv = rows.map((row) => row.map(escapeCsvValue).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=us-ascii' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+}
+
 function formatNumber(value) {
     if (value === null || value === undefined || Number.isNaN(value)) return '—';
     const number = Number(value);
@@ -103,13 +159,11 @@ function formatDate(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '—';
     return date.toLocaleDateString();
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
 }
 
 function formatDateTime(value) {
     if (!value) return '—';
     const date = new Date(value);
-<<<<<<< HEAD
     return date.toLocaleString();
 }
 
@@ -122,7 +176,6 @@ function updateSeedingVolume() {
     }).then(data => {
         document.getElementById('seedingVolume').value = data.seeding_volume_ml;
     }).catch(console.error);
-=======
     if (Number.isNaN(date.getTime())) return '—';
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
@@ -179,12 +232,11 @@ function showWorkflow() {
     document.getElementById('dashboardView').hidden = true;
     document.getElementById('workflowView').hidden = false;
     document.getElementById('workflowView').classList.add('active');
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 }
 
 async function loadExperiments() {
     const data = await fetchJSON(api.experiments);
-<<<<<<< HEAD
     experiments = data.experiments;
     const tbody = document.querySelector('#experimentsTable tbody');
     tbody.innerHTML = '';
@@ -645,7 +697,6 @@ function updateAverageTiterDisplay(samples) {
     const average = calculateAverageTiter(samples);
     const element = document.getElementById('averageTiter');
     element.textContent = average ? `${Math.round(average).toLocaleString()} TU/mL` : '—';
-=======
     state.experiments = data.experiments || [];
     renderDashboard();
 }
@@ -710,6 +761,15 @@ function createExperimentCard(experiment) {
     });
     actions.appendChild(toggleButton);
 
+    if (status === 'finished') {
+        const exportButton = document.createElement('button');
+        exportButton.type = 'button';
+        exportButton.className = 'ghost';
+        exportButton.textContent = 'Export CSV';
+        exportButton.addEventListener('click', () => exportExperimentCsv(experiment.id, experiment.name));
+        actions.appendChild(exportButton);
+    }
+
     card.appendChild(actions);
     return card;
 }
@@ -772,6 +832,30 @@ async function updateExperiment(id, payload) {
 
 async function deleteExperiment(id) {
     await fetchJSON(api.experimentDetail(id), { method: 'DELETE' });
+}
+
+async function exportExperimentCsv(id, name) {
+    try {
+        const response = await fetch(api.experimentExport(id));
+        if (!response.ok) {
+            throw new Error('Unable to export experiment data.');
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const safeName = (name || 'experiment')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '') || `experiment-${id}`;
+        link.download = `${safeName}-lentivirus.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        alert(error.message || 'Unable to export experiment data.');
+    }
 }
 
 async function openExperimentDetail(experimentId) {
@@ -1323,11 +1407,29 @@ function buildTransfectionRow(prep) {
     metricsCell.className = 'metrics-cell';
     if (draft?.metrics) {
         const m = draft.metrics;
-        metricsCell.innerHTML = `
-            <div>Opti-MEM: ${m.opti_mem_ml?.toFixed(3) ?? '—'} mL</div>
-            <div>X-tremeGENE: ${m.xtremegene_ul?.toFixed(3) ?? '—'} µL</div>
-            <div>Transfer: ${m.transfer_volume_ul ?? '—'} µL · Packaging: ${m.packaging_volume_ul ?? '—'} µL · Envelope: ${m.envelope_volume_ul ?? '—'} µL</div>
-        `;
+        const rows = [
+            { label: 'Opti-MEM', value: formatVolume(m.opti_mem_ml, 3), unit: 'mL' },
+            { label: 'X-tremeGENE 9', value: formatVolume(m.xtremegene_ul, 2), unit: 'µL' },
+            { label: 'Transfer DNA', value: formatVolume(m.transfer_volume_ul, 2), unit: 'µL' },
+            { label: 'Packaging DNA', value: formatVolume(m.packaging_volume_ul, 2), unit: 'µL' },
+            { label: 'Envelope DNA', value: formatVolume(m.envelope_volume_ul, 2), unit: 'µL' }
+        ];
+        const table = document.createElement('table');
+        table.className = 'metrics-table';
+        const tbody = document.createElement('tbody');
+        rows.forEach((row) => {
+            const tr = document.createElement('tr');
+            const nameCell = document.createElement('th');
+            nameCell.scope = 'row';
+            nameCell.textContent = row.label;
+            tr.appendChild(nameCell);
+            const valueCell = document.createElement('td');
+            valueCell.textContent = row.value != null ? `${row.value} ${row.unit}` : '—';
+            tr.appendChild(valueCell);
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        metricsCell.appendChild(table);
     } else {
         metricsCell.textContent = 'Provide concentrations to compute volumes.';
         metricsCell.classList.add('muted');
@@ -1341,7 +1443,11 @@ function buildTransfectionRow(prep) {
     copyButton.className = 'ghost small';
     copyButton.textContent = 'Copy label';
     copyButton.addEventListener('click', () => {
-        const text = `${prep.transfer_name} — ${state.activeExperiment.cell_line} — ${isoToday()}`;
+        const text = joinLabelParts([
+            prep.transfer_name,
+            state.activeExperiment?.cell_line,
+            isoToday()
+        ]);
         copyToClipboard(copyButton, text);
     });
     actionsCell.appendChild(copyButton);
@@ -1412,13 +1518,78 @@ function copyTransfectionLabels() {
         .map((id) => {
             const prep = getPrepById(id);
             if (!prep) return null;
-            return `${prep.transfer_name} — ${state.activeExperiment.cell_line} — ${isoToday()}`;
+            return joinLabelParts([
+                prep.transfer_name,
+                state.activeExperiment?.cell_line,
+                isoToday()
+            ]);
         })
         .filter(Boolean)
         .join('\n');
     if (text) {
         copyToClipboard(button, text);
     }
+}
+
+function exportTransfectionCsv() {
+    const selected = getSelectedPrepIds();
+    if (!selected.length) return;
+    const header = [
+        'Preparation',
+        'Vessel',
+        'Molar ratio',
+        'Transfer (ng/uL)',
+        'Packaging (ng/uL)',
+        'Envelope (ng/uL)',
+        'Opti-MEM (mL)',
+        'X-tremeGENE 9 (uL)',
+        'Transfer DNA (uL)',
+        'Packaging DNA (uL)',
+        'Envelope DNA (uL)'
+    ];
+    const rows = [header];
+    selected.forEach((id) => {
+        const prep = getPrepById(id);
+        if (!prep) return;
+        const draft = state.transfectionDraft.get(id) || null;
+        const metrics = draft?.metrics || null;
+        const ratioDisplay = draft?.ratioMode || prep.transfection?.ratio_display || '4:3:1';
+        const transferConc = draft?.transferConcentration ?? prep.transfer_concentration ?? '';
+        const packagingConc = draft?.packagingConcentration ?? '';
+        const envelopeConc = draft?.envelopeConcentration ?? '';
+        const optiMem = metrics ? formatVolume(metrics.opti_mem_ml, 3) : '';
+        const xtremegene = metrics ? formatVolume(metrics.xtremegene_ul, 2) : '';
+        const transferVol = metrics ? formatVolume(metrics.transfer_volume_ul, 2) : '';
+        const packagingVol = metrics ? formatVolume(metrics.packaging_volume_ul, 2) : '';
+        const envelopeVol = metrics ? formatVolume(metrics.envelope_volume_ul, 2) : '';
+        rows.push([
+            prep.transfer_name || '',
+            prep.vessel_type || '',
+            ratioDisplay || '',
+            transferConc || '',
+            packagingConc || '',
+            envelopeConc || '',
+            optiMem || '',
+            xtremegene || '',
+            transferVol || '',
+            packagingVol || '',
+            envelopeVol || ''
+        ]);
+    });
+    if (rows.length === 1) return;
+    const experiment = state.activeExperiment;
+    let base;
+    if (experiment) {
+        const fallback = `experiment-${experiment.id || 'transfection'}`;
+        base = buildSafeFilenameBase(experiment.name || '', fallback);
+        if (!base.endsWith('-transfection')) {
+            base = `${base}-transfection`;
+        }
+    } else {
+        base = 'transfection';
+    }
+    const filename = `${base}.csv`;
+    downloadCsvFile(filename, rows);
 }
 
 async function saveTransfection() {
@@ -1652,10 +1823,14 @@ function buildHarvestEntry(prep) {
     copyButton.textContent = 'Copy label';
     copyButton.addEventListener('click', () => {
         const volumeRaw = draft.volume || prep.harvest?.volume_ml || prep.media_change?.volume_ml;
-        const volumePart = volumeRaw !== undefined && volumeRaw !== null && String(volumeRaw).trim() !== ''
-            ? ` — ${String(volumeRaw).trim()} mL`
-            : '';
-        const text = `${prep.transfer_name} — ${dateInput.value || isoToday()}${volumePart}`;
+        const volumeLabel = volumeRaw !== undefined && volumeRaw !== null && String(volumeRaw).trim() !== ''
+            ? `${String(volumeRaw).trim()} mL`
+            : null;
+        const text = joinLabelParts([
+            prep.transfer_name,
+            dateInput.value || isoToday(),
+            volumeLabel
+        ]);
         copyToClipboard(copyButton, text);
     });
 
@@ -1713,7 +1888,11 @@ function copyHarvestLabels() {
             const trimmedVolume = volumeRaw !== undefined && volumeRaw !== null && String(volumeRaw).trim() !== ''
                 ? `${String(volumeRaw).trim()} mL`
                 : null;
-            return trimmedVolume ? `${prep.transfer_name} — ${date} — ${trimmedVolume}` : `${prep.transfer_name} — ${date}`;
+            return joinLabelParts([
+                prep.transfer_name,
+                date,
+                trimmedVolume
+            ]);
         })
         .filter(Boolean)
         .join('\n');
@@ -1785,7 +1964,7 @@ function buildTiterSamples(count) {
         locked: true
     });
     samples.push({
-        label: 'No LV − Selection',
+        label: 'No LV - Selection',
         role: 'control-no-selection',
         volume: 0,
         selection: false,
@@ -2097,7 +2276,12 @@ async function saveTiterSetup() {
                 .forEach((sample) => {
                     const volumeValue = sample.volume === '' || sample.volume == null ? 0 : Number(sample.volume);
                     const volumeText = Number.isFinite(volumeValue) ? volumeValue.toString() : '0';
-                    labelRows.push(`${prep?.transfer_name ?? ''} — ${formState.cellLine} — ${cellsLabel} cells — ${volumeText} µL`);
+                    labelRows.push(joinLabelParts([
+                        prep?.transfer_name ?? '',
+                        formState.cellLine,
+                        `${cellsLabel} cells`,
+                        `${volumeText} uL`
+                    ]));
                 });
             await fetchJSON(api.titerRuns(prepId), {
                 method: 'POST',
@@ -2118,7 +2302,7 @@ async function saveTiterSetup() {
         }
         if (labelRows.length) {
             labelRows.push(`No LV + ${selectionName}`);
-            labelRows.push(`No LV − ${selectionName}`);
+            labelRows.push(`No LV - ${selectionName}`);
         }
         setTiterPlanCopy(labelRows.join('\n'));
         state.titerSamples = [];
@@ -2240,12 +2424,11 @@ function populateTiterResults(entry) {
 
     document.getElementById('titerSummary').textContent = '';
     document.getElementById('copyTiterSummary').hidden = true;
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
 }
 
 async function submitTiterResults(event) {
     event.preventDefault();
-<<<<<<< HEAD
     const runId = parseInt(document.getElementById('titerRunSelect').value, 10);
     if (!runId) return;
     const controlPercent = parseFloat(document.getElementById('controlPercent').value) || 100;
@@ -2318,7 +2501,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateSeedingVolume();
     updateTransfectionMetrics();
 });
-=======
     const runs = collectAllRuns();
     const entry = runs.find((run) => run.id === state.currentRunId);
     if (!entry) return;
@@ -2357,7 +2539,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             summary.textContent = `Average titer: ${response.average_titer.toLocaleString()} TU/mL`;
             const copyButton = document.getElementById('copyTiterSummary');
             copyButton.hidden = false;
-            copyButton.dataset.summary = `${entry.prepName} — ${new Date().toLocaleDateString()} — Lentivirus titer = ${response.average_titer.toLocaleString()} TU/mL`;
+            copyButton.dataset.summary = joinLabelParts([
+                entry.prepName,
+                new Date().toLocaleDateString(),
+                `Lentivirus titer = ${response.average_titer.toLocaleString()} TU/mL`
+            ]);
         }
         await refreshActiveExperiment(entry.prepId);
     } catch (error) {
@@ -2475,6 +2661,7 @@ function attachEventListeners() {
     document.getElementById('clearSelectedPreps').addEventListener('click', handleClearSelectedPreps);
     document.getElementById('applyTransfectionBulk').addEventListener('click', applyTransfectionBulk);
     document.getElementById('copyTransfectionLabels').addEventListener('click', copyTransfectionLabels);
+    document.getElementById('exportTransfectionCsv').addEventListener('click', exportTransfectionCsv);
     document.getElementById('saveTransfection').addEventListener('click', saveTransfection);
     document.getElementById('applyMediaBulk').addEventListener('click', applyMediaBulk);
     document.getElementById('saveMediaChanges').addEventListener('click', saveMediaChanges);
@@ -2549,4 +2736,4 @@ async function init() {
 
 document.addEventListener('DOMContentLoaded', init);
 
->>>>>>> codex/build-full-stack-lentivirus-production-tracker-0rg9pw
+
