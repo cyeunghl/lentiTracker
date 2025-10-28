@@ -143,13 +143,39 @@
                                 <button class="btn btn-outline-secondary w-100" id="printPrepLabel" type="button">Print Label</button>
                             </div>
                         </div>
+                        <div class="row g-2 mt-2">
+                            <div class="col">
+                                <label class="form-label">Plates for This Prep</label>
+                                <input type="number" class="form-control" id="plateCount" min="1" value="1">
+                            </div>
+                        </div>
                         <div class="d-grid mt-3">
                             <button class="btn btn-primary" type="submit">Save Lentivirus Prep</button>
                         </div>
                     </form>
+                    <div id="prepFeedback" class="alert d-none mt-3" role="alert"></div>
                     <div class="mt-3">
-                        <h6>Saved Lentivirus Preparations</h6>
-                        <ul class="list-group" id="prepList"></ul>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0">Saved Lentivirus Preparations</h6>
+                            <small class="text-muted">Select rows to enable bulk actions.</small>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle" id="prepTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col" style="width: 32px;"><input class="form-check-input" type="checkbox" id="selectAllPreps"></th>
+                                        <th scope="col">Transfer Prep</th>
+                                        <th scope="col" style="width: 140px;">Cell Line</th>
+                                        <th scope="col" style="width: 140px;">Transfer Conc. (ng/µL)</th>
+                                        <th scope="col" style="width: 140px;">Plasmid Size (bp)</th>
+                                        <th scope="col" style="width: 100px;">Plates</th>
+                                        <th scope="col">Status</th>
+                                        <th scope="col" style="width: 140px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="prepTableBody"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -160,39 +186,99 @@
                     <h5 class="mb-0">3. Transfection (Day 1 PM)</h5>
                 </div>
                 <div class="card-body">
-                    <form id="transfectionForm">
-                        <div class="row g-2">
-                            <div class="col">
-                                <label class="form-label">Lentivirus Prep</label>
-                                <select class="form-select" id="transfectionPrepSelect" required></select>
-                            </div>
-                            <div class="col">
-                                <label class="form-label">Vessel Type</label>
-                                <select class="form-select" id="transfectionVessel" required>
-                                    {% for vessel in surface_areas.keys() %}
-                                    <option value="{{ vessel }}">{{ vessel }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
+                    <ul class="nav nav-pills" id="transfectionTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="transfection-individual-tab" data-bs-toggle="pill" data-bs-target="#transfectionIndividual" type="button" role="tab">Individual Entry</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="transfection-bulk-tab" data-bs-toggle="pill" data-bs-target="#transfectionBulk" type="button" role="tab">Bulk Entry</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content mt-3">
+                        <div class="tab-pane fade show active" id="transfectionIndividual" role="tabpanel">
+                            <form id="transfectionForm">
+                                <div class="row g-2">
+                                    <div class="col">
+                                        <label class="form-label">Lentivirus Prep</label>
+                                        <select class="form-select" id="transfectionPrepSelect" required></select>
+                                        <div class="form-text" id="transfectionPrepLabel">Select a prep to view details.</div>
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label">Vessel Type</label>
+                                        <select class="form-select" id="transfectionVessel" required>
+                                            {% for vessel in surface_areas.keys() %}
+                                            <option value="{{ vessel }}">{{ vessel }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row g-2 mt-2">
+                                    <div class="col">
+                                        <label class="form-label">Molar Ratio Mode</label>
+                                        <select class="form-select" id="ratioMode">
+                                            <option value="optimal">4:3:1 (transfer:packaging:envelope)</option>
+                                            <option value="custom">Other</option>
+                                        </select>
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label">Custom Ratio</label>
+                                        <input type="text" class="form-control" id="customRatio" placeholder="e.g. 5,3,1" disabled>
+                                    </div>
+                                </div>
+                                <div class="row g-2 mt-2">
+                                    <div class="col">
+                                        <label class="form-label">Transfer Conc. (ng/µL)</label>
+                                        <input type="number" step="any" class="form-control" id="transfectionTransferConc">
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label">Packaging Conc. (ng/µL)</label>
+                                        <input type="number" step="any" class="form-control" id="transfectionPackagingConc">
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label">Envelope Conc. (ng/µL)</label>
+                                        <input type="number" step="any" class="form-control" id="transfectionEnvelopeConc">
+                                    </div>
+                                </div>
+                                <div class="row g-2 mt-3" id="transfectionResults"></div>
+                                <div class="d-grid mt-3">
+                                    <button class="btn btn-primary" type="submit">Save Transfection</button>
+                                </div>
+                            </form>
                         </div>
-                        <div class="row g-2 mt-2">
-                            <div class="col">
-                                <label class="form-label">Molar Ratio Mode</label>
-                                <select class="form-select" id="ratioMode">
-                                    <option value="optimal">4:3:1 (transfer:packaging:envelope)</option>
-                                    <option value="custom">Other</option>
-                                </select>
-                            </div>
-                            <div class="col">
-                                <label class="form-label">Custom Ratio</label>
-                                <input type="text" class="form-control" id="customRatio" placeholder="e.g. 5,3,1" disabled>
-                            </div>
+                        <div class="tab-pane fade" id="transfectionBulk" role="tabpanel">
+                            <form id="transfectionBulkForm">
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Packaging Conc. (ng/µL)</label>
+                                        <input type="number" step="any" class="form-control" id="bulkPackagingConc">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Envelope Conc. (ng/µL)</label>
+                                        <input type="number" step="any" class="form-control" id="bulkEnvelopeConc">
+                                    </div>
+                                </div>
+                                <div class="table-responsive mt-3">
+                                    <table class="table table-sm align-middle">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th scope="col">Lentivirus Prep</th>
+                                                <th scope="col" style="width: 140px;">Transfer Conc. (ng/µL)</th>
+                                                <th scope="col" style="width: 150px;">Vessel</th>
+                                                <th scope="col" style="width: 200px;">Ratio</th>
+                                                <th scope="col">Calculated Reagents</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="transfectionBulkBody">
+                                            <tr><td colspan="5" class="text-center text-muted">Select preps from the table above to begin bulk entry.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="d-grid mt-3">
+                                    <button class="btn btn-primary" type="submit">Save Bulk Transfections</button>
+                                </div>
+                            </form>
                         </div>
-                        <div class="row g-2 mt-3" id="transfectionResults"></div>
-                        <div class="d-grid mt-3">
-                            <button class="btn btn-primary" type="submit">Save Transfection</button>
-                        </div>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -205,27 +291,60 @@
                     <h5 class="mb-0">4. Media Change</h5>
                 </div>
                 <div class="card-body">
-                    <form id="mediaForm">
-                        <div class="mb-3">
-                            <label class="form-label">Lentivirus Prep</label>
-                            <select class="form-select" id="mediaPrepSelect"></select>
+                    <ul class="nav nav-pills" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="media-individual-tab" data-bs-toggle="pill" data-bs-target="#mediaIndividual" type="button" role="tab">Individual</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="media-bulk-tab" data-bs-toggle="pill" data-bs-target="#mediaBulk" type="button" role="tab">Bulk</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content mt-3">
+                        <div class="tab-pane fade show active" id="mediaIndividual" role="tabpanel">
+                            <form id="mediaForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Lentivirus Prep</label>
+                                    <select class="form-select" id="mediaPrepSelect"></select>
+                                    <div class="form-text" id="mediaPrepLabel">Select a prep to continue.</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Media Type</label>
+                                    <select class="form-select" id="mediaType">
+                                        <option>DMEM + 20% iFBS</option>
+                                        <option>DMEM + 10% iFBS</option>
+                                        <option>DMEM + 10% FBS</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Volume (mL)</label>
+                                    <input type="number" step="any" class="form-control" id="mediaVolume" required>
+                                </div>
+                                <div class="d-grid">
+                                    <button class="btn btn-primary" type="submit">Save Media Change</button>
+                                </div>
+                            </form>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Media Type</label>
-                            <select class="form-select" id="mediaType">
-                                <option>DMEM + 20% iFBS</option>
-                                <option>DMEM + 10% iFBS</option>
-                                <option>DMEM + 10% FBS</option>
-                            </select>
+                        <div class="tab-pane fade" id="mediaBulk" role="tabpanel">
+                            <form id="mediaBulkForm">
+                                <p class="text-muted">Bulk entry applies the same media change to all selected preps.</p>
+                                <div class="mb-3">
+                                    <label class="form-label">Media Type</label>
+                                    <select class="form-select" id="mediaBulkType">
+                                        <option>DMEM + 20% iFBS</option>
+                                        <option>DMEM + 10% iFBS</option>
+                                        <option>DMEM + 10% FBS</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Volume (mL)</label>
+                                    <input type="number" step="any" class="form-control" id="mediaBulkVolume" required>
+                                </div>
+                                <div class="d-grid">
+                                    <button class="btn btn-primary" type="submit">Save Bulk Media Changes</button>
+                                </div>
+                            </form>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Volume (mL)</label>
-                            <input type="number" step="any" class="form-control" id="mediaVolume" required>
-                        </div>
-                        <div class="d-grid">
-                            <button class="btn btn-primary" type="submit">Save Media Change</button>
-                        </div>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -235,24 +354,54 @@
                     <h5 class="mb-0">5. Viral Harvest</h5>
                 </div>
                 <div class="card-body">
-                    <form id="harvestForm">
-                        <div class="mb-3">
-                            <label class="form-label">Lentivirus Prep</label>
-                            <select class="form-select" id="harvestPrepSelect"></select>
+                    <ul class="nav nav-pills" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="harvest-individual-tab" data-bs-toggle="pill" data-bs-target="#harvestIndividual" type="button" role="tab">Individual</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="harvest-bulk-tab" data-bs-toggle="pill" data-bs-target="#harvestBulk" type="button" role="tab">Bulk</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content mt-3">
+                        <div class="tab-pane fade show active" id="harvestIndividual" role="tabpanel">
+                            <form id="harvestForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Lentivirus Prep</label>
+                                    <select class="form-select" id="harvestPrepSelect"></select>
+                                    <div class="form-text" id="harvestPrepLabel">Select a prep with a media change recorded.</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Harvest Date</label>
+                                    <input type="date" class="form-control" id="harvestDate">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Volume (mL)</label>
+                                    <input type="number" step="any" class="form-control" id="harvestVolume">
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-primary" type="submit">Save Harvest</button>
+                                    <button class="btn btn-outline-secondary" type="button" id="copyHarvestLabel">Copy Label Text</button>
+                                    <button class="btn btn-outline-secondary" type="button" id="printHarvestLabel">Print Harvest Labels</button>
+                                </div>
+                            </form>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Harvest Date</label>
-                            <input type="date" class="form-control" id="harvestDate">
+                        <div class="tab-pane fade" id="harvestBulk" role="tabpanel">
+                            <form id="harvestBulkForm">
+                                <p class="text-muted">Bulk harvest uses the same date and volume for all selected preps.</p>
+                                <div class="mb-3">
+                                    <label class="form-label">Harvest Date</label>
+                                    <input type="date" class="form-control" id="harvestBulkDate">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Volume (mL)</label>
+                                    <input type="number" step="any" class="form-control" id="harvestBulkVolume">
+                                </div>
+                                <div class="d-grid">
+                                    <button class="btn btn-primary" type="submit">Save Bulk Harvests</button>
+                                </div>
+                            </form>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Volume (mL)</label>
-                            <input type="number" step="any" class="form-control" id="harvestVolume">
-                        </div>
-                        <div class="d-grid gap-2">
-                            <button class="btn btn-primary" type="submit">Save Harvest</button>
-                            <button class="btn btn-outline-secondary" type="button" id="printHarvestLabel">Print Harvest Labels</button>
-                        </div>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -277,51 +426,107 @@
                     <h5 class="mb-0">6. Lentivirus Titering</h5>
                 </div>
                 <div class="card-body">
-                    <form id="titerSetupForm">
-                        <div class="row g-2">
-                            <div class="col-md-3">
-                                <label class="form-label">Lentivirus Prep</label>
-                                <select class="form-select" id="titerPrepSelect" required></select>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">Cell Line</label>
-                                <input type="text" class="form-control" id="titerCellLine" required>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Cells Seeded</label>
-                                <input type="number" step="any" class="form-control" id="titerCellsSeeded" required>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Vessel Type</label>
-                                <select class="form-select" id="titerVessel" required>
-                                    {% for vessel in surface_areas.keys() %}
-                                    <option value="{{ vessel }}">{{ vessel }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label"># Test Conditions</label>
-                                <input type="number" class="form-control" id="titerTests" min="1" value="1">
-                            </div>
+                    <ul class="nav nav-pills" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="titer-individual-tab" data-bs-toggle="pill" data-bs-target="#titerIndividual" type="button" role="tab">Individual</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="titer-bulk-tab" data-bs-toggle="pill" data-bs-target="#titerBulk" type="button" role="tab">Bulk</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content mt-3">
+                        <div class="tab-pane fade show active" id="titerIndividual" role="tabpanel">
+                            <form id="titerSetupForm">
+                                <div class="row g-2">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Lentivirus Prep</label>
+                                        <select class="form-select" id="titerPrepSelect" required></select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Cell Line</label>
+                                        <input type="text" class="form-control" id="titerCellLine" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Cells Seeded</label>
+                                        <input type="number" step="any" class="form-control" id="titerCellsSeeded" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Vessel Type</label>
+                                        <select class="form-select" id="titerVessel" required>
+                                            {% for vessel in surface_areas.keys() %}
+                                            <option value="{{ vessel }}" {% if vessel == '6-well' %}selected{% endif %}>{{ vessel }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label"># Test Conditions</label>
+                                        <input type="number" class="form-control" id="titerTests" min="1" value="1">
+                                    </div>
+                                </div>
+                                <div class="row g-2 mt-2">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Selection Reagent</label>
+                                        <input type="text" class="form-control" id="selectionReagent" placeholder="e.g. Puromycin">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Selection Concentration (µg/mL)</label>
+                                        <input type="number" step="any" class="form-control" id="selectionConcentration" placeholder="e.g. 1">
+                                    </div>
+                                    <div class="col-md-4 d-flex align-items-end">
+                                        <button class="btn btn-outline-secondary w-100" type="button" id="generateTiterInputs">Generate Inputs</button>
+                                    </div>
+                                </div>
+                                <div class="mt-3" id="titerSamplesContainer"></div>
+                                <div class="d-grid mt-3">
+                                    <button class="btn btn-primary" type="submit">Save Titer Setup</button>
+                                </div>
+                            </form>
                         </div>
-                        <div class="row g-2 mt-2">
-                            <div class="col-md-4">
-                                <label class="form-label">Selection Reagent</label>
-                                <input type="text" class="form-control" id="selectionReagent" placeholder="e.g. Puromycin">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Selection Concentration</label>
-                                <input type="text" class="form-control" id="selectionConcentration" placeholder="e.g. 1 µg/mL">
-                            </div>
-                            <div class="col-md-4 d-flex align-items-end">
-                                <button class="btn btn-outline-secondary w-100" type="button" id="generateTiterInputs">Generate Inputs</button>
-                            </div>
+                        <div class="tab-pane fade" id="titerBulk" role="tabpanel">
+                            <form id="titerBulkForm">
+                                <p class="text-muted">Bulk entry will duplicate the same titer run for all selected preps.</p>
+                                <div class="row g-2">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Cell Line</label>
+                                        <input type="text" class="form-control" id="titerBulkCellLine" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Cells Seeded</label>
+                                        <input type="number" step="any" class="form-control" id="titerBulkCellsSeeded" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Vessel Type</label>
+                                        <select class="form-select" id="titerBulkVessel" required>
+                                            {% for vessel in surface_areas.keys() %}
+                                            <option value="{{ vessel }}" {% if vessel == '6-well' %}selected{% endif %}>{{ vessel }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label"># Test Conditions</label>
+                                        <input type="number" class="form-control" id="titerBulkTests" min="1" value="1">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Selection Reagent</label>
+                                        <input type="text" class="form-control" id="titerBulkSelectionReagent" placeholder="e.g. Puromycin">
+                                    </div>
+                                </div>
+                                <div class="row g-2 mt-2">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Selection Concentration (µg/mL)</label>
+                                        <input type="number" step="any" class="form-control" id="titerBulkSelectionConcentration" placeholder="e.g. 1">
+                                    </div>
+                                    <div class="col-md-4 d-flex align-items-end">
+                                        <button class="btn btn-outline-secondary w-100" type="button" id="generateTiterBulkInputs">Generate Inputs</button>
+                                    </div>
+                                </div>
+                                <div class="mt-3" id="titerBulkSamplesContainer"></div>
+                                <div class="d-grid mt-3">
+                                    <button class="btn btn-primary" type="submit">Save Bulk Titer Setups</button>
+                                </div>
+                            </form>
                         </div>
-                        <div class="mt-3" id="titerSamplesContainer"></div>
-                        <div class="d-grid mt-3">
-                            <button class="btn btn-primary" type="submit">Save Titer Setup</button>
-                        </div>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>

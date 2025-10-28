@@ -31,3 +31,64 @@ body {
 .badge-sample {
     font-size: 0.75rem;
 }
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background-color: #e9ecef;
+    color: #6c757d;
+}
+
+.status-pill.active {
+    background-color: #0d6efd;
+    color: #fff;
+}
+
+.status-pill::before {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background-color: currentColor;
+    opacity: 0.7;
+}
+
+.status-stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.reagent-summary {
+    background-color: #f8f9fa;
+}
+
+.reagent-summary h6 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.reagent-table th,
+.reagent-table td {
+    vertical-align: middle;
+}
+
+.reagent-table thead th {
+    background-color: #f1f3f5;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.reagent-table .table-section th {
+    background-color: #e9ecef;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
