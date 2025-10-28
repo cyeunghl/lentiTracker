@@ -1,3 +1,35 @@
+body {
+    background-color: #f5f7fb;
+}
+
+.card {
+    border: none;
+}
+
+.table tbody tr {
+    cursor: pointer;
+}
+
+#labelPreview {
+    min-height: 140px;
+    background: repeating-linear-gradient(
+        -45deg,
+        #f8f9fa,
+        #f8f9fa 10px,
+        #ffffff 10px,
+        #ffffff 20px
+    );
+}
+
+#labelPreview .label-item {
+    border: 1px dashed #6c757d;
+    padding: 12px;
+    margin-bottom: 8px;
+    background-color: rgba(255,255,255,0.9);
+}
+
+.badge-sample {
+    font-size: 0.75rem;
 :root {
     --bg: #f4f7fb;
     --card-bg: #ffffff;
@@ -778,4 +810,5 @@ button.small.danger {
 .run-list .active {
     background: rgba(80, 134, 194, 0.15);
     border: 1px solid rgba(80, 134, 194, 0.35);
+
 }
