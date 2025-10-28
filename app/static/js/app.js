@@ -56,6 +56,22 @@ function parseNumericInput(value) {
     return null;
 }
 
+function formatVolume(value, digits = 2) {
+    if (value === null || value === undefined) return null;
+    const number = Number(value);
+    if (!Number.isFinite(number)) return null;
+    const fixed = number.toFixed(digits);
+    if (!fixed.includes('.')) return fixed;
+    return fixed.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0*$/, '');
+}
+
+function joinLabelParts(parts) {
+    return parts
+        .map((part) => (part ?? '').toString().trim())
+        .filter((part) => part.length > 0)
+        .join(' - ');
+}
+
 function formatNumber(value) {
     if (value === null || value === undefined || Number.isNaN(value)) return '—';
     const number = Number(value);
@@ -852,11 +868,29 @@ function buildTransfectionRow(prep) {
     metricsCell.className = 'metrics-cell';
     if (draft?.metrics) {
         const m = draft.metrics;
-        metricsCell.innerHTML = `
-            <div>Opti-MEM: ${m.opti_mem_ml?.toFixed(3) ?? '—'} mL</div>
-            <div>X-tremeGENE: ${m.xtremegene_ul?.toFixed(3) ?? '—'} µL</div>
-            <div>Transfer: ${m.transfer_volume_ul ?? '—'} µL · Packaging: ${m.packaging_volume_ul ?? '—'} µL · Envelope: ${m.envelope_volume_ul ?? '—'} µL</div>
-        `;
+        const rows = [
+            { label: 'Opti-MEM', value: formatVolume(m.opti_mem_ml, 3), unit: 'mL' },
+            { label: 'X-tremeGENE 9', value: formatVolume(m.xtremegene_ul, 2), unit: 'µL' },
+            { label: 'Transfer DNA', value: formatVolume(m.transfer_volume_ul, 2), unit: 'µL' },
+            { label: 'Packaging DNA', value: formatVolume(m.packaging_volume_ul, 2), unit: 'µL' },
+            { label: 'Envelope DNA', value: formatVolume(m.envelope_volume_ul, 2), unit: 'µL' }
+        ];
+        const table = document.createElement('table');
+        table.className = 'metrics-table';
+        const tbody = document.createElement('tbody');
+        rows.forEach((row) => {
+            const tr = document.createElement('tr');
+            const nameCell = document.createElement('th');
+            nameCell.scope = 'row';
+            nameCell.textContent = row.label;
+            tr.appendChild(nameCell);
+            const valueCell = document.createElement('td');
+            valueCell.textContent = row.value != null ? `${row.value} ${row.unit}` : '—';
+            tr.appendChild(valueCell);
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        metricsCell.appendChild(table);
     } else {
         metricsCell.textContent = 'Provide concentrations to compute volumes.';
         metricsCell.classList.add('muted');
@@ -870,7 +904,11 @@ function buildTransfectionRow(prep) {
     copyButton.className = 'ghost small';
     copyButton.textContent = 'Copy label';
     copyButton.addEventListener('click', () => {
-        const text = `${prep.transfer_name} — ${state.activeExperiment.cell_line} — ${isoToday()}`;
+        const text = joinLabelParts([
+            prep.transfer_name,
+            state.activeExperiment?.cell_line,
+            isoToday()
+        ]);
         copyToClipboard(copyButton, text);
     });
     actionsCell.appendChild(copyButton);
@@ -941,7 +979,11 @@ function copyTransfectionLabels() {
         .map((id) => {
             const prep = getPrepById(id);
             if (!prep) return null;
-            return `${prep.transfer_name} — ${state.activeExperiment.cell_line} — ${isoToday()}`;
+            return joinLabelParts([
+                prep.transfer_name,
+                state.activeExperiment?.cell_line,
+                isoToday()
+            ]);
         })
         .filter(Boolean)
         .join('\n');
@@ -1181,10 +1223,14 @@ function buildHarvestEntry(prep) {
     copyButton.textContent = 'Copy label';
     copyButton.addEventListener('click', () => {
         const volumeRaw = draft.volume || prep.harvest?.volume_ml || prep.media_change?.volume_ml;
-        const volumePart = volumeRaw !== undefined && volumeRaw !== null && String(volumeRaw).trim() !== ''
-            ? ` — ${String(volumeRaw).trim()} mL`
-            : '';
-        const text = `${prep.transfer_name} — ${dateInput.value || isoToday()}${volumePart}`;
+        const volumeLabel = volumeRaw !== undefined && volumeRaw !== null && String(volumeRaw).trim() !== ''
+            ? `${String(volumeRaw).trim()} mL`
+            : null;
+        const text = joinLabelParts([
+            prep.transfer_name,
+            dateInput.value || isoToday(),
+            volumeLabel
+        ]);
         copyToClipboard(copyButton, text);
     });
 
@@ -1242,7 +1288,11 @@ function copyHarvestLabels() {
             const trimmedVolume = volumeRaw !== undefined && volumeRaw !== null && String(volumeRaw).trim() !== ''
                 ? `${String(volumeRaw).trim()} mL`
                 : null;
-            return trimmedVolume ? `${prep.transfer_name} — ${date} — ${trimmedVolume}` : `${prep.transfer_name} — ${date}`;
+            return joinLabelParts([
+                prep.transfer_name,
+                date,
+                trimmedVolume
+            ]);
         })
         .filter(Boolean)
         .join('\n');
@@ -1314,7 +1364,7 @@ function buildTiterSamples(count) {
         locked: true
     });
     samples.push({
-        label: 'No LV − Selection',
+        label: 'No LV - Selection',
         role: 'control-no-selection',
         volume: 0,
         selection: false,
@@ -1626,7 +1676,12 @@ async function saveTiterSetup() {
                 .forEach((sample) => {
                     const volumeValue = sample.volume === '' || sample.volume == null ? 0 : Number(sample.volume);
                     const volumeText = Number.isFinite(volumeValue) ? volumeValue.toString() : '0';
-                    labelRows.push(`${prep?.transfer_name ?? ''} — ${formState.cellLine} — ${cellsLabel} cells — ${volumeText} µL`);
+                    labelRows.push(joinLabelParts([
+                        prep?.transfer_name ?? '',
+                        formState.cellLine,
+                        `${cellsLabel} cells`,
+                        `${volumeText} uL`
+                    ]));
                 });
             await fetchJSON(api.titerRuns(prepId), {
                 method: 'POST',
@@ -1647,7 +1702,7 @@ async function saveTiterSetup() {
         }
         if (labelRows.length) {
             labelRows.push(`No LV + ${selectionName}`);
-            labelRows.push(`No LV − ${selectionName}`);
+            labelRows.push(`No LV - ${selectionName}`);
         }
         setTiterPlanCopy(labelRows.join('\n'));
         state.titerSamples = [];
@@ -1811,7 +1866,11 @@ async function submitTiterResults(event) {
             summary.textContent = `Average titer: ${response.average_titer.toLocaleString()} TU/mL`;
             const copyButton = document.getElementById('copyTiterSummary');
             copyButton.hidden = false;
-            copyButton.dataset.summary = `${entry.prepName} — ${new Date().toLocaleDateString()} — Lentivirus titer = ${response.average_titer.toLocaleString()} TU/mL`;
+            copyButton.dataset.summary = joinLabelParts([
+                entry.prepName,
+                new Date().toLocaleDateString(),
+                `Lentivirus titer = ${response.average_titer.toLocaleString()} TU/mL`
+            ]);
         }
         await refreshActiveExperiment(entry.prepId);
     } catch (error) {

@@ -667,6 +667,32 @@ button.small.danger {
     line-height: 1.5;
 }
 
+.metrics-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.metrics-table th,
+.metrics-table td {
+    padding: 4px 8px;
+}
+
+.metrics-table th {
+    text-align: left;
+    font-weight: 600;
+    color: #1d3051;
+}
+
+.metrics-table td {
+    text-align: right;
+    color: #2c4262;
+    font-variant-numeric: tabular-nums;
+}
+
+.metrics-table tr + tr {
+    border-top: 1px solid rgba(110, 167, 216, 0.25);
+}
+
 .stack {
     display: flex;
     flex-direction: column;
