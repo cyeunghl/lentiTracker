@@ -326,12 +326,11 @@ button.danger {
 
 .workflow-columns {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 24px;
 }
 
-.workflow-columns #prepCard,
-.workflow-columns #transfectionCard {
+.workflow-columns .full-width-card {
     grid-column: 1 / -1;
 }
 
@@ -803,12 +802,104 @@ button.small.danger {
 
 .run-list {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .run-list .active {
     background: rgba(80, 134, 194, 0.15);
     border: 1px solid rgba(80, 134, 194, 0.35);
 
+}
+
+.run-entry {
+    border: 1px solid rgba(110, 167, 216, 0.18);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.9);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: var(--shadow);
+}
+
+.run-entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.run-entry-header .run-select {
+    flex: 1 1 220px;
+    min-width: 180px;
+    text-align: left;
+}
+
+.run-entry-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.run-entry-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.run-sample-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid rgba(110, 167, 216, 0.18);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.85);
+}
+
+.run-sample-title {
+    grid-column: 1 / -1;
+    font-weight: 600;
+    color: #1d3051;
+}
+
+.run-sample-field,
+.run-sample-check {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-weight: 600;
+    color: #1d3051;
+}
+
+.run-sample-check {
+    flex-direction: row;
+    align-items: center;
+}
+
+.run-sample-check input {
+    margin: 0;
+    width: auto;
+}
+
+.run-entry-summary {
+    display: grid;
+    gap: 6px;
+    font-size: 0.9rem;
+    color: #4d5e75;
+}
+
+.run-entry-summary-item {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.run-entry-summary-label {
+    font-weight: 600;
+    color: #1d3051;
 }

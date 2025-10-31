@@ -509,6 +509,50 @@ def titer_runs_endpoint(prep_id: int):
     return jsonify({'titer_runs': [run.to_dict(include_samples=True) for run in runs]})
 
 
+@bp.route('/api/titer-runs/<int:run_id>', methods=['PUT', 'DELETE'])
+def titer_run_detail(run_id: int):
+    run = TiterRun.query.get_or_404(run_id)
+
+    if request.method == 'DELETE':
+        db.session.delete(run)
+        db.session.commit()
+        return jsonify({'deleted': True})
+
+    data = request.get_json(force=True)
+    samples_payload = data.get('samples', [])
+    if not isinstance(samples_payload, list):
+        return jsonify({'error': 'samples must be a list'}), 400
+
+    sample_map = {sample.id: sample for sample in run.samples}
+
+    for sample_payload in samples_payload:
+        sample_id = sample_payload.get('id')
+        try:
+            sample_id = int(sample_id)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid sample id'}), 400
+
+        sample = sample_map.get(sample_id)
+        if sample is None:
+            return jsonify({'error': f'Sample {sample_id} does not belong to this run'}), 400
+
+        if 'virus_volume_ul' in sample_payload:
+            try:
+                volume = float(sample_payload['virus_volume_ul'])
+            except (TypeError, ValueError):
+                return jsonify({'error': 'virus_volume_ul must be a number'}), 400
+            sample.virus_volume_ul = volume
+
+        if 'selection_used' in sample_payload:
+            selection_value = sample_payload['selection_used']
+            if isinstance(selection_value, str):
+                selection_value = selection_value.lower() in {'true', '1', 'yes'}
+            sample.selection_used = bool(selection_value)
+
+    db.session.commit()
+    return jsonify({'titer_run': run.to_dict(include_samples=True)})
+
+
 @bp.route('/api/titer-runs/<int:run_id>/results', methods=['POST'])
 def titer_results_endpoint(run_id: int):
     run = TiterRun.query.get_or_404(run_id)
