@@ -10,6 +10,7 @@ const api = {
     mediaChange: (prepId) => `/api/preps/${prepId}/media-change`,
     harvest: (prepId) => `/api/preps/${prepId}/harvest`,
     titerRuns: (prepId) => `/api/preps/${prepId}/titer-runs`,
+    titerRun: (runId) => `/api/titer-runs/${runId}`,
     titerResults: (runId) => `/api/titer-runs/${runId}/results`,
     metrics: {
         seeding: '/api/metrics/seeding',
@@ -60,7 +61,9 @@ const state = {
     titerSaveScope: 'all',
     titerSaveTarget: null,
     titerPlanCopy: '',
-    currentRunId: null
+    currentRunId: null,
+    titerEditingRunId: null,
+    titerRunDraft: new Map()
 };
 
 function parseNumericInput(value) {
@@ -2091,14 +2094,103 @@ function renderTiterPrepTable() {
     });
 }
 
+function startTiterRunEdit(entry) {
+    state.titerEditingRunId = entry.id;
+    state.titerRunDraft = new Map(
+        entry.data.samples.map((sample) => [
+            sample.id,
+            {
+                virusVolumeUl:
+                    sample.virus_volume_ul != null ? String(sample.virus_volume_ul) : '',
+                selectionUsed: !!sample.selection_used,
+            },
+        ])
+    );
+    renderTiterRunsList();
+}
+
+function cancelTiterRunEdit() {
+    state.titerEditingRunId = null;
+    state.titerRunDraft = new Map();
+    renderTiterRunsList();
+}
+
+function updateTiterRunDraft(sampleId, updates) {
+    const current = state.titerRunDraft.get(sampleId) || {
+        virusVolumeUl: '',
+        selectionUsed: false,
+    };
+    state.titerRunDraft.set(sampleId, { ...current, ...updates });
+}
+
+async function saveTiterRunEdits(entry) {
+    const samplesPayload = [];
+    for (const sample of entry.data.samples) {
+        const draft = state.titerRunDraft.get(sample.id);
+        const rawVolume = draft ? draft.virusVolumeUl : sample.virus_volume_ul;
+        const parsedVolume =
+            rawVolume === '' || rawVolume === null || rawVolume === undefined
+                ? Number.NaN
+                : Number(rawVolume);
+        if (!Number.isFinite(parsedVolume)) {
+            alert(`Enter a virus volume for ${sample.label}.`);
+            return;
+        }
+        samplesPayload.push({
+            id: sample.id,
+            virus_volume_ul: parsedVolume,
+            selection_used: draft ? !!draft.selectionUsed : !!sample.selection_used,
+        });
+    }
+
+    try {
+        await fetchJSON(api.titerRun(entry.id), {
+            method: 'PUT',
+            body: JSON.stringify({ samples: samplesPayload }),
+        });
+        state.titerEditingRunId = null;
+        state.titerRunDraft = new Map();
+        await refreshActiveExperiment(entry.prepId);
+    } catch (error) {
+        alert(error.message || 'Unable to save titer run.');
+    }
+}
+
+async function deleteTiterRun(entry) {
+    if (!confirm('Delete this titer run? Samples and results will be removed.')) return;
+    state.titerEditingRunId = null;
+    state.titerRunDraft = new Map();
+    try {
+        await fetchJSON(api.titerRun(entry.id), { method: 'DELETE' });
+        if (state.currentRunId === entry.id) {
+            state.currentRunId = null;
+        }
+        await refreshActiveExperiment(entry.prepId);
+    } catch (error) {
+        alert(error.message || 'Unable to delete titer run.');
+        renderTiterRunsList();
+    }
+}
+
 function renderTiterRunsList() {
     const container = document.getElementById('titerRunsContainer');
     const runs = collectAllRuns();
     if (!runs.length) {
         container.hidden = true;
         container.innerHTML = '';
+        state.titerEditingRunId = null;
+        state.titerRunDraft = new Map();
         return;
     }
+
+    if (
+        state.titerEditingRunId &&
+        !runs.some((entry) => entry.id === state.titerEditingRunId)
+    ) {
+        state.titerEditingRunId = null;
+        state.titerRunDraft = new Map();
+    }
+
     container.hidden = false;
     container.innerHTML = '';
 
@@ -2114,25 +2206,161 @@ function renderTiterRunsList() {
         const section = document.createElement('div');
         section.className = 'stack-item';
         const header = document.createElement('header');
-        header.innerHTML = `<strong>${group.prepName}</strong><span class="muted">${group.runs.length} run${group.runs.length === 1 ? '' : 's'}</span>`;
+        header.innerHTML = `<strong>${group.prepName}</strong><span class="muted">${group.runs.length} run${
+            group.runs.length === 1 ? '' : 's'
+        }</span>`;
         section.appendChild(header);
+
         const list = document.createElement('div');
         list.className = 'run-list';
+
         group.runs
             .sort((a, b) => new Date(b.data.created_at) - new Date(a.data.created_at))
             .forEach((entry) => {
-                const item = document.createElement('button');
-                item.type = 'button';
-                item.className = 'ghost small';
-                if (entry.id === state.currentRunId) item.classList.add('active');
-                item.textContent = formatDateTime(entry.data.created_at);
-                item.addEventListener('click', () => {
+                const runItem = document.createElement('div');
+                runItem.className = 'run-entry';
+
+                const rowHeader = document.createElement('div');
+                rowHeader.className = 'run-entry-header';
+
+                const selectButton = document.createElement('button');
+                selectButton.type = 'button';
+                selectButton.className = 'ghost small run-select';
+                if (entry.id === state.currentRunId) selectButton.classList.add('active');
+                selectButton.textContent = formatDateTime(entry.data.created_at);
+                selectButton.addEventListener('click', () => {
                     state.currentRunId = entry.id;
                     renderTiterResultsSection();
                     renderTiterRunsList();
                 });
-                list.appendChild(item);
+                rowHeader.appendChild(selectButton);
+
+                const controls = document.createElement('div');
+                controls.className = 'run-entry-controls';
+
+                if (state.titerEditingRunId === entry.id) {
+                    const saveButton = document.createElement('button');
+                    saveButton.type = 'button';
+                    saveButton.className = 'primary small';
+                    saveButton.textContent = 'Save';
+                    saveButton.addEventListener('click', () => saveTiterRunEdits(entry));
+                    controls.appendChild(saveButton);
+
+                    const cancelButton = document.createElement('button');
+                    cancelButton.type = 'button';
+                    cancelButton.className = 'ghost small';
+                    cancelButton.textContent = 'Cancel';
+                    cancelButton.addEventListener('click', cancelTiterRunEdit);
+                    controls.appendChild(cancelButton);
+                } else {
+                    const editButton = document.createElement('button');
+                    editButton.type = 'button';
+                    editButton.className = 'ghost small';
+                    editButton.textContent = 'Edit';
+                    editButton.addEventListener('click', () => startTiterRunEdit(entry));
+                    controls.appendChild(editButton);
+                }
+
+                const deleteButton = document.createElement('button');
+                deleteButton.type = 'button';
+                deleteButton.className = 'ghost small danger';
+                deleteButton.textContent = 'Delete';
+                deleteButton.addEventListener('click', () => deleteTiterRun(entry));
+                controls.appendChild(deleteButton);
+
+                rowHeader.appendChild(controls);
+                runItem.appendChild(rowHeader);
+
+                if (state.titerEditingRunId === entry.id) {
+                    const editor = document.createElement('div');
+                    editor.className = 'run-entry-editor';
+
+                    entry.data.samples.forEach((sample) => {
+                        if (!state.titerRunDraft.has(sample.id)) {
+                            state.titerRunDraft.set(sample.id, {
+                                virusVolumeUl:
+                                    sample.virus_volume_ul != null
+                                        ? String(sample.virus_volume_ul)
+                                        : '',
+                                selectionUsed: !!sample.selection_used,
+                            });
+                        }
+                        const sampleDraft = state.titerRunDraft.get(sample.id);
+
+                        const sampleRow = document.createElement('div');
+                        sampleRow.className = 'run-sample-row';
+
+                        const title = document.createElement('div');
+                        title.className = 'run-sample-title';
+                        title.textContent = sample.label;
+                        sampleRow.appendChild(title);
+
+                        const volumeField = document.createElement('label');
+                        volumeField.className = 'run-sample-field';
+                        const volumeLabel = document.createElement('span');
+                        volumeLabel.textContent = 'Virus volume (µL)';
+                        const volumeInput = document.createElement('input');
+                        volumeInput.type = 'number';
+                        volumeInput.step = 'any';
+                        volumeInput.className = 'inline-input';
+                        volumeInput.value = sampleDraft.virusVolumeUl ?? '';
+                        volumeInput.addEventListener('input', () => {
+                            updateTiterRunDraft(sample.id, {
+                                virusVolumeUl: volumeInput.value,
+                            });
+                        });
+                        volumeField.append(volumeLabel, volumeInput);
+                        sampleRow.appendChild(volumeField);
+
+                        const selectionField = document.createElement('label');
+                        selectionField.className = 'run-sample-check';
+                        const selectionCheckbox = document.createElement('input');
+                        selectionCheckbox.type = 'checkbox';
+                        selectionCheckbox.checked = !!sampleDraft.selectionUsed;
+                        selectionCheckbox.addEventListener('change', () => {
+                            updateTiterRunDraft(sample.id, {
+                                selectionUsed: selectionCheckbox.checked,
+                            });
+                        });
+                        const selectionText = document.createElement('span');
+                        selectionText.textContent = 'Selection applied';
+                        selectionField.append(selectionCheckbox, selectionText);
+                        sampleRow.appendChild(selectionField);
+
+                        editor.appendChild(sampleRow);
+                    });
+
+                    runItem.appendChild(editor);
+                } else {
+                    const summary = document.createElement('div');
+                    summary.className = 'run-entry-summary';
+
+                    entry.data.samples.forEach((sample) => {
+                        const summaryRow = document.createElement('div');
+                        summaryRow.className = 'run-entry-summary-item';
+
+                        const label = document.createElement('span');
+                        label.className = 'run-entry-summary-label';
+                        label.textContent = sample.label;
+
+                        const details = document.createElement('span');
+                        const volume = formatVolume(sample.virus_volume_ul);
+                        const volumeText = volume != null ? `${volume} µL` : '—';
+                        const selectionText = sample.selection_used
+                            ? 'Selection applied'
+                            : 'No selection';
+                        details.textContent = `${volumeText} · ${selectionText}`;
+
+                        summaryRow.append(label, details);
+                        summary.appendChild(summaryRow);
+                    });
+
+                    runItem.appendChild(summary);
+                }
+
+                list.appendChild(runItem);
             });
+
         section.appendChild(list);
         container.appendChild(section);
     });
